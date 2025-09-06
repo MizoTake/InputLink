@@ -9,7 +9,7 @@
 - DInput / XInput コントローラーに対応
 - 受信側での仮想コントローラー（Windows: ViGEm / vgamepad）
 - 自動再接続を含む堅牢なWebSocket通信
-- 最大8台までの複数コントローラーに対応
+- 複数コントローラーに対応（内部制限なし。実際の上限はOS/アプリ依存）
 - JSON設定とCLIオプションで柔軟に構成
 
 ## クイックスタート
@@ -45,8 +45,8 @@ input-link-sender --verbose
 # 既定ポートで起動
 input-link-receiver
 
-# ポートや最大コントローラー数を変更
-input-link-receiver --port 9000 --max-controllers 8
+# ポートや最大コントローラー数を変更（0=無制限）
+input-link-receiver --port 9000 --max-controllers 0
 
 # 詳細ログ
 input-link-receiver --verbose
@@ -57,7 +57,7 @@ input-link-receiver --verbose
 ```bash
 # リポジトリルートから
 python main.py sender --host 127.0.0.1 --port 8765
-python main.py receiver --port 8765 --max-controllers 4
+python main.py receiver --port 8765 --max-controllers 0
 
 # Makeターゲットの利用
 make run-sender
@@ -258,13 +258,13 @@ input-link-sender \
 ```
 
 注意:
-- 番号は1〜8の範囲で指定可能です。
-- 受信側の最大数より大きい番号を割り当てても、上限を超える仮想コントローラーは作成されません。
+- 番号は1以上の任意の整数を指定できます（内部制限なし）。
+- 受信側は `max_controllers=0` で無制限に作成しますが、実際に認識・利用できる台数はOSや対象アプリに依存します。
 
 ### GUIからの設定ポイント
 
 - 送信側（Sender）
   - Receiver Host / Port / Polling Rate を変更可能
-  - 各コントローラーに対し「Enable」と「Player #（1〜8）」を設定
+  - 各コントローラーに対し「Enable」と「Player #（1以上）」を設定
 - 受信側（Receiver）
   - Listen Host / Listen Port / Max Controllers / Auto-create Virtual を変更可能

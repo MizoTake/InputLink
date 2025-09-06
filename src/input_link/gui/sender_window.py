@@ -109,7 +109,7 @@ class ControllerCard(QFrame):
         num_label = QLabel("Player #:")
         num_label.setStyleSheet("color: #1D1D1F; font-size: 11px;")
         self.player_spin = QSpinBox()
-        self.player_spin.setRange(1, 8)
+        self.player_spin.setRange(1, 128)
         self.player_spin.setValue(getattr(self.controller, 'assigned_number', 1) or 1)
         self.player_spin.setFixedWidth(80)
         self.player_spin.setStyleSheet(

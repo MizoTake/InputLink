@@ -19,7 +19,7 @@ class WindowsVirtualController(VirtualController):
         """Initialize Windows virtual controller.
         
         Args:
-            controller_number: Controller number (1-8) 
+            controller_number: Controller number (>=1)
             controller_type: Controller type ('xbox360' or 'ds4')
         """
         super().__init__(controller_number)

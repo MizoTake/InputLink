@@ -181,7 +181,7 @@ class ControllerManager:
         Returns:
             True if assignment successful, False otherwise
         """
-        if not (1 <= number <= 8):
+        if not (1 <= number):
             logger.error(f"Invalid controller number: {number}")
             return False
 
@@ -263,11 +263,12 @@ class ControllerManager:
         return False
 
     def _get_next_available_number(self) -> Optional[int]:
-        """Get the next available controller number."""
-        for i in range(1, 9):
-            if i not in self._assigned_numbers:
-                return i
-        return None
+        """Get the next available controller number (no fixed upper bound)."""
+        i = 1
+        # Find the smallest positive integer not in the assigned set
+        while i in self._assigned_numbers:
+            i += 1
+        return i
 
     def cleanup(self) -> None:
         """Cleanup resources."""

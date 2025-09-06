@@ -323,7 +323,7 @@ class ReceiverWindow(QMainWindow):
         controllers_label.setStyleSheet("color: #1D1D1F; font-size: 12px; font-weight: 600;")
 
         self.max_controllers_spin = QSpinBox()
-        self.max_controllers_spin.setRange(0, 8)
+        self.max_controllers_spin.setRange(0, 128)
         self.max_controllers_spin.setValue(0)
         self.max_controllers_spin.setStyleSheet(self._get_input_style())
         self.max_controllers_spin.valueChanged.connect(self._update_controller_count)

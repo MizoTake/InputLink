@@ -14,7 +14,7 @@ from .controller import InputMethod
 class ControllerConfig(BaseModel):
     """Individual controller configuration."""
 
-    assigned_number: int = Field(..., ge=1, le=8)
+    assigned_number: int = Field(..., ge=1)
     input_method: InputMethod = Field(default=InputMethod.XINPUT)
     enabled: bool = Field(default=True)
     display_name: Optional[str] = Field(default=None, max_length=100)
@@ -78,7 +78,8 @@ class ReceiverConfig(BaseModel):
 
     listen_host: str = Field(default="0.0.0.0", description="IP address to bind the server")
     listen_port: int = Field(default=8765, ge=1024, le=65535)
-    max_controllers: int = Field(default=4, ge=1, le=8)
+    # 0 = No limit (treated as unlimited internally)
+    max_controllers: int = Field(default=0, ge=0)
     auto_create_virtual: bool = Field(default=True)
     connection_timeout: float = Field(default=30.0, ge=5.0, le=300.0)
     platform_specific: PlatformSpecificConfig = Field(default_factory=PlatformSpecificConfig)
