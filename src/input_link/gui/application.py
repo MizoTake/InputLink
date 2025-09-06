@@ -243,6 +243,18 @@ class AsyncWorker(QThread):
                 self.sender_settings["port"] = port
             if isinstance(rate, int):
                 self.sender_settings["polling_rate"] = rate
+            # Live-update network settings if sender is running
+            try:
+                if self.sender_app and self.sender_app.running and self.loop:
+                    asyncio.run_coroutine_threadsafe(
+                        self.sender_app.update_network_settings(
+                            self.sender_settings["host"],
+                            int(self.sender_settings["port"]),
+                        ),
+                        self.loop,
+                    )
+            except Exception:
+                pass
         elif t == "controller_number":
             cid = payload.get("controller_id")
             num = payload.get("number")
@@ -250,11 +262,24 @@ class AsyncWorker(QThread):
                 entry = self.sender_settings["controllers"].setdefault(cid, {"enabled": True, "number": 1})
                 if isinstance(num, int):
                     entry["number"] = num
+                # Live-apply number change if sender is running
+                try:
+                    if self.sender_app and self.sender_app.running:
+                        self.sender_app.set_controller_number(cid, int(entry["number"]))
+                except Exception:
+                    pass
 
     @Slot(str, bool)
     def on_sender_controller_enabled(self, controller_id: str, enabled: bool):
         entry = self.sender_settings["controllers"].setdefault(controller_id, {"enabled": False, "number": 1})
         entry["enabled"] = bool(enabled)
+        # Live-apply enable/disable
+        try:
+            if self.sender_app and self.sender_app.running:
+                num = int(entry.get("number", 1))
+                self.sender_app.set_controller_enabled(controller_id, bool(enabled), number=num)
+        except Exception:
+            pass
 
     @Slot(dict)
     def on_receiver_settings_changed(self, payload: Dict):

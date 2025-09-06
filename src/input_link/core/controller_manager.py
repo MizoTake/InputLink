@@ -216,6 +216,24 @@ class ControllerManager:
         logger.info(f"Assigned controller number {number} to {controller.name}")
         return True
 
+    def unassign_controller(self, controller_id: str) -> bool:
+        """Clear assigned number for a specific controller.
+        
+        Args:
+            controller_id: Controller identifier
+        Returns:
+            True if unassigned, False otherwise
+        """
+        for c in self._controllers.values():
+            if c.identifier == controller_id:
+                if c.assigned_number:
+                    self._assigned_numbers.discard(c.assigned_number)
+                    c.assigned_number = None
+                    logger.info(f"Unassigned number from {c.name}")
+                return True
+        logger.error(f"Controller not found for unassign: {controller_id}")
+        return False
+
     def set_input_method(self, controller_id: str, method: InputMethod) -> bool:
         """Set preferred input method for a controller.
         

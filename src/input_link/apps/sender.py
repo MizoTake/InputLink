@@ -50,6 +50,59 @@ class SenderApp:
             log_callback=log_callback,
         )
 
+    # Runtime updates
+    def set_controller_number(self, controller_id: str, number: int) -> bool:
+        if not self.controller_manager:
+            return False
+        ok = self.controller_manager.assign_controller_number(controller_id, number)
+        if ok:
+            self.logger.info(f"Controller {controller_id} set to Player {number}")
+        return ok
+
+    def set_controller_enabled(self, controller_id: str, enabled: bool, number: Optional[int] = None) -> bool:
+        if not self.controller_manager:
+            return False
+        if enabled:
+            if number is None:
+                number = self.controller_manager._get_next_available_number()  # best effort
+                if number is None:
+                    self.logger.error("No available controller numbers to assign")
+                    return False
+            return self.set_controller_number(controller_id, number)
+        else:
+            ok = self.controller_manager.unassign_controller(controller_id)
+            if ok:
+                self.logger.info(f"Controller {controller_id} disabled")
+            return ok
+
+    async def update_network_settings(self, host: str, port: int) -> None:
+        """Update receiver host/port and reconnect WebSocket client if needed."""
+        if not self.config:
+            return
+        need_restart = (
+            host != self.config.sender_config.receiver_host or
+            port != self.config.sender_config.receiver_port
+        )
+        if not need_restart:
+            return
+        self.logger.info(f"Updating network settings to {host}:{port}")
+        self.config.sender_config.receiver_host = host
+        self.config.sender_config.receiver_port = port
+        try:
+            if self.websocket_client:
+                await self.websocket_client.stop()
+        except Exception:
+            pass
+        # Recreate client with new settings
+        self.websocket_client = WebSocketClient(
+            host=self.config.sender_config.receiver_host,
+            port=self.config.sender_config.receiver_port,
+            reconnect_interval=self.config.sender_config.retry_interval,
+            max_reconnect_attempts=self.config.sender_config.max_retry_attempts,
+            status_callback=self._status_callback,
+        )
+        await self.websocket_client.start()
+
     async def start(self) -> None:
         """Start the sender application."""
         try:

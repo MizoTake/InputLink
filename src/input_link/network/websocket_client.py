@@ -198,8 +198,11 @@ class WebSocketClient:
                 if self._status_callback:
                     self._status_callback("disconnected")
 
-            # Reconnection logic
-            if self._running and self._reconnect_attempts < self._max_reconnect_attempts:
+            # Reconnection logic (max_reconnect_attempts <= 0 means infinite)
+            if self._running and (
+                self._max_reconnect_attempts <= 0 or
+                self._reconnect_attempts < self._max_reconnect_attempts
+            ):
                 self._reconnect_attempts += 1
                 wait_time = min(self._reconnect_interval * (2 ** (self._reconnect_attempts - 1)), 30)
 
