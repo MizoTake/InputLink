@@ -222,7 +222,7 @@ make clean             # 生成物のクリーン
 
 - 受信側（Receiver）
   - `--host` で待受IPを指定（デフォルト: `0.0.0.0` = すべてのNICで待受）
-  - 例: `input-link-receiver --host 0.0.0.0 --port 8765 --max-controllers 8`
+  - 例: `input-link-receiver --host 0.0.0.0 --port 8765 --max-controllers 0`
 - 送信側（Sender）
   - `--host` で受信側PCのLAN IPを指定（例: `192.168.1.50`）
   - 例: `input-link-sender --host 192.168.1.50 --port 8765`

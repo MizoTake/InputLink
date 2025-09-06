@@ -25,7 +25,7 @@ test-cov: ## Run tests with coverage
 	pytest tests/ --cov=src/input_link --cov-report=html --cov-report=term
 
 lint: ## Run linting
-	ruff src tests
+	ruff check src tests
 	mypy src
 
 format: ## Format code
