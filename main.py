@@ -66,11 +66,21 @@ def main(ctx, version):
     help='Receiver port'
 )
 @click.option(
+    '--controller-map',
+    multiple=True,
+    help="Controller mapping '<identifier>:<number>' (repeatable)",
+)
+@click.option(
+    '--list-controllers',
+    is_flag=True,
+    help='List detected controllers and exit'
+)
+@click.option(
     '--verbose', '-v',
     is_flag=True,
     help='Enable verbose logging'
 )
-def sender(config, host, port, verbose):
+def sender(config, host, port, controller_map, list_controllers, verbose):
     """Run Input Link Sender (captures controller inputs)"""
     # Prepare arguments for sender main
     args = []
@@ -82,6 +92,10 @@ def sender(config, host, port, verbose):
         args.extend(['--port', str(port)])
     if verbose:
         args.append('--verbose')
+    for m in controller_map:
+        args.extend(['--controller-map', m])
+    if list_controllers:
+        args.append('--list-controllers')
     
     # Call sender main with sys.argv override
     original_argv = sys.argv
@@ -97,6 +111,11 @@ def sender(config, host, port, verbose):
     '--config',
     type=click.Path(exists=False),
     help='Path to configuration file'
+)
+@click.option(
+    '--host',
+    default="0.0.0.0",
+    help='Server host/IP to listen on'
 )
 @click.option(
     '--port',
@@ -115,12 +134,14 @@ def sender(config, host, port, verbose):
     is_flag=True,
     help='Enable verbose logging'
 )
-def receiver(config, port, max_controllers, verbose):
+def receiver(config, host, port, max_controllers, verbose):
     """Run Input Link Receiver (simulates controller inputs)"""
     # Prepare arguments for receiver main
     args = []
     if config:
         args.extend(['--config', config])
+    if host != "0.0.0.0":
+        args.extend(['--host', host])
     if port != 8765:
         args.extend(['--port', str(port)])
     if max_controllers != 4:

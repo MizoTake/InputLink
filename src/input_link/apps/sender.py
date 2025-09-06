@@ -94,6 +94,11 @@ class SenderApp:
     async def _load_config(self) -> None:
         """Load application configuration."""
         try:
+            # If config already provided (e.g., from GUI), skip loading from file
+            if self.config is not None:
+                self.logger.info("Using provided configuration (skipping file load)")
+                return
+
             # Create config directory if needed
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -108,13 +113,23 @@ class SenderApp:
     async def _initialize_components(self) -> None:
         """Initialize application components."""
         # Initialize controller manager
-        self.controller_manager = ControllerManager(auto_assign_numbers=True)
+        # If explicit controller mappings are provided in config, prefer manual assignment
+        has_explicit_mappings = bool(
+            getattr(self.config, "sender_config", None)
+            and getattr(self.config.sender_config, "controllers", None)
+        )
+        self.controller_manager = ControllerManager(auto_assign_numbers=not has_explicit_mappings)
         self.controller_manager.initialize()
 
         # Initialize input capture engine
         loop = asyncio.get_running_loop()
+        from input_link.core.input_capture import InputCaptureConfig
+        capture_config = InputCaptureConfig(
+            polling_rate=self.config.sender_config.polling_rate,
+        )
         self.input_engine = InputCaptureEngine(
             self.controller_manager,
+            config=capture_config,
             input_callback=self._on_controller_input,
             event_loop=loop,
         )
@@ -138,6 +153,29 @@ class SenderApp:
         # Scan for controllers
         controllers = self.controller_manager.scan_controllers()
         self.logger.info(f"Found {len(controllers)} controller(s)")
+
+        # Apply explicit controller number assignments from config if provided
+        try:
+            mappings = getattr(self.config.sender_config, "controllers", {})
+            if mappings:
+                for cid, ccfg in mappings.items():
+                    try:
+                        if getattr(ccfg, "enabled", True):
+                            # Assign desired number; will unassign previous owner if needed
+                            self.controller_manager.assign_controller_number(cid, ccfg.assigned_number)
+                        else:
+                            # Disabled: ensure no assignment remains
+                            # Find controller and clear assignment
+                            for c in controllers:
+                                if c.identifier == cid:
+                                    if c.assigned_number:
+                                        # Reassign to None by removing from internal set
+                                        c.assigned_number = None
+                                    break
+                    except Exception as e:
+                        self.logger.error(f"Failed to apply mapping for {cid}: {e}")
+        except Exception as e:
+            self.logger.error(f"Error applying controller mappings: {e}")
 
         for controller in controllers:
             self.logger.info(f"  - {controller.name} (Number: {controller.assigned_number})")
@@ -207,19 +245,78 @@ class SenderApp:
     help="Receiver port",
 )
 @click.option(
+    "--controller-map",
+    multiple=True,
+    help=(
+        "Controller number mapping in the form '<identifier>:<number>'. "
+        "Repeatable. Identifier should match a controller identifier (guid_deviceId)."
+    ),
+)
+@click.option(
+    "--list-controllers",
+    is_flag=True,
+    help="List detected controllers and exit",
+)
+@click.option(
     "--verbose", "-v",
     is_flag=True,
     help="Enable verbose logging",
 )
-def main(config: Optional[Path], host: str, port: int, verbose: bool) -> None:
+def main(
+    config: Optional[Path],
+    host: str,
+    port: int,
+    controller_map: tuple[str, ...],
+    list_controllers: bool,
+    verbose: bool,
+) -> None:
     """Input Link Sender - Capture and forward controller inputs."""
+    if list_controllers:
+        try:
+            from input_link.core import ControllerManager
+            cm = ControllerManager()
+            cm.initialize()
+            controllers = cm.scan_controllers()
+            print(f"Detected {len(controllers)} controller(s):")
+            for c in controllers:
+                print(f"- {c.name} | identifier={c.identifier} | pygame_id={c.pygame_id}")
+            return
+        except Exception as e:
+            print(f"Failed to list controllers: {e}")
+            return
     # Create sender app with verbose logging
     app = SenderApp(config_path=config, verbose=verbose)
 
-    # Override config if command line options provided
-    if config is None and (host != "127.0.0.1" or port != 8765):
-        # Create temporary config with command line values
-        from input_link.models import ReceiverConfig, SenderConfig
+    # Apply CLI overrides by merging with existing config file (if any)
+    try:
+        from input_link.models import ControllerConfig, SenderConfig, ReceiverConfig
+
+        cfg_path = config or (Path.home() / ".input-link" / "config.json")
+        base_cfg = ConfigModel.load_from_file(cfg_path)
+
+        # Network overrides
+        if host and host != base_cfg.sender_config.receiver_host:
+            base_cfg.sender_config.receiver_host = host
+        if port and port != base_cfg.sender_config.receiver_port:
+            base_cfg.sender_config.receiver_port = port
+
+        # Controller mapping overrides
+        for m in controller_map:
+            try:
+                key, num_str = m.split(":", 1)
+                num = int(num_str)
+                if num < 1 or num > 8:
+                    raise ValueError("number out of range 1-8")
+                base_cfg.sender_config.controllers[key] = ControllerConfig(
+                    assigned_number=num,
+                    enabled=True,
+                )
+            except Exception as e:
+                print(f"Ignoring invalid --controller-map '{m}': {e}")
+
+        app.config = base_cfg
+    except Exception as e:
+        # If anything goes wrong, fall back to minimal inline config
         app.config = ConfigModel(
             sender_config=SenderConfig(receiver_host=host, receiver_port=port),
             receiver_config=ReceiverConfig(),

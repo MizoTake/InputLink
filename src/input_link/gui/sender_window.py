@@ -28,6 +28,7 @@ class ControllerCard(QFrame):
     """Apple HIG-compliant controller status card."""
 
     controller_toggled = Signal(str, bool)  # controller_id, enabled
+    controller_number_changed = Signal(str, int)  # controller_id, player number
 
     def __init__(self, controller: DetectedController):
         super().__init__()
@@ -101,6 +102,25 @@ class ControllerCard(QFrame):
 
         layout.addLayout(header_layout)
         layout.addWidget(self.status_label)
+
+        # Player number selector
+        num_layout = QHBoxLayout()
+        num_layout.setSpacing(6)
+        num_label = QLabel("Player #:")
+        num_label.setStyleSheet("color: #1D1D1F; font-size: 11px;")
+        self.player_spin = QSpinBox()
+        self.player_spin.setRange(1, 8)
+        self.player_spin.setValue(getattr(self.controller, 'assigned_number', 1) or 1)
+        self.player_spin.setFixedWidth(80)
+        self.player_spin.setStyleSheet(
+            "QSpinBox { background-color: white; border: 1px solid #D1D1D6;"
+            " border-radius: 6px; padding: 4px 6px; font-size: 12px; color: #1D1D1F; }"
+        )
+        self.player_spin.valueChanged.connect(self._on_number_changed)
+        num_layout.addWidget(num_label)
+        num_layout.addWidget(self.player_spin)
+        num_layout.addStretch()
+        layout.addLayout(num_layout)
         self.setLayout(layout)
 
     def _setup_style(self):
@@ -130,11 +150,18 @@ class ControllerCard(QFrame):
         else:
             self.status_label.setText("Disabled")
             self.status_label.setStyleSheet("color: #8E8E93;")
+        # Enable/disable number selector accordingly
+        self.player_spin.setEnabled(checked)
 
     def update_status(self, status: str, color: str = "#8E8E93"):
         """Update controller status."""
         self.status_label.setText(status)
         self.status_label.setStyleSheet(f"color: {color};")
+
+    def _on_number_changed(self, value: int):
+        """Handle player number change."""
+        controller_id = getattr(self.controller, 'identifier', f'{self.controller.guid}_{self.controller.device_id}')
+        self.controller_number_changed.emit(controller_id, value)
 
 
 class SenderWindow(QMainWindow):
@@ -281,6 +308,7 @@ class SenderWindow(QMainWindow):
         self.host_combo.setEditable(True)
         self.host_combo.addItems(["127.0.0.1", "192.168.1.100", "10.0.0.100"])
         self.host_combo.setStyleSheet(self._get_input_style())
+        self.host_combo.currentTextChanged.connect(self._emit_settings)
 
         # Receiver port
         port_label = QLabel("Port:")
@@ -290,6 +318,7 @@ class SenderWindow(QMainWindow):
         self.port_spin.setRange(1000, 65535)
         self.port_spin.setValue(8765)
         self.port_spin.setStyleSheet(self._get_input_style())
+        self.port_spin.valueChanged.connect(lambda _: self._emit_settings())
 
         # Polling rate
         rate_label = QLabel("Polling Rate (Hz):")
@@ -299,6 +328,7 @@ class SenderWindow(QMainWindow):
         self.rate_spin.setRange(30, 120)
         self.rate_spin.setValue(60)
         self.rate_spin.setStyleSheet(self._get_input_style())
+        self.rate_spin.valueChanged.connect(lambda _: self._emit_settings())
 
         settings_layout.addWidget(host_label, 0, 0)
         settings_layout.addWidget(self.host_combo, 0, 1)
@@ -366,6 +396,7 @@ class SenderWindow(QMainWindow):
         for controller in controllers:
             card = ControllerCard(controller)
             card.controller_toggled.connect(self.controller_enabled.emit)
+            card.controller_number_changed.connect(self._on_controller_number_changed)
             self.controller_cards.append(card)
             self.controller_scroll_layout.addWidget(card)
 
@@ -376,6 +407,23 @@ class SenderWindow(QMainWindow):
     def update_connection_status(self, status: str, color: str = "#8E8E93"):
         """Update connection status."""
         self.connection_card.update_status(status, color)
+
+    def _on_controller_number_changed(self, controller_id: str, number: int):
+        """Emit settings change when a controller number changes."""
+        self.settings_changed.emit({
+            "type": "controller_number",
+            "controller_id": controller_id,
+            "number": number,
+        })
+
+    def _emit_settings(self):
+        """Emit current sender settings (host/port/polling)."""
+        self.settings_changed.emit({
+            "type": "sender_network",
+            "host": self.host_combo.currentText().strip(),
+            "port": int(self.port_spin.value()),
+            "polling_rate": int(self.rate_spin.value()),
+        })
 
     def _get_group_style(self) -> str:
         """Get consistent group box styling."""

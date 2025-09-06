@@ -216,3 +216,55 @@ make format            # フォーマット適用
 make build             # 実行ファイルのビルド
 make clean             # 生成物のクリーン
 ```
+# ローカルネットワークでの利用（他PC接続向け）
+
+同一LAN内の別PCから接続しやすいように、受信側の待受IP（Listen Host）と、送信側の接続先IP（Receiver Host）を個別に設定できます。
+
+- 受信側（Receiver）
+  - `--host` で待受IPを指定（デフォルト: `0.0.0.0` = すべてのNICで待受）
+  - 例: `input-link-receiver --host 0.0.0.0 --port 8765 --max-controllers 8`
+- 送信側（Sender）
+  - `--host` で受信側PCのLAN IPを指定（例: `192.168.1.50`）
+  - 例: `input-link-sender --host 192.168.1.50 --port 8765`
+
+LAN IPの確認例（受信側PC）:
+- Windows: コマンドプロンプトで `ipconfig` を実行し、使用中のアダプタの IPv4 アドレスを確認
+- macOS: ターミナルで `ipconfig getifaddr en0`（Wi‑Fi） 等
+
+ファイアウォールの許可が必要な場合があります（特にWindows）。
+
+### コントローラー番号の1:1対応（Sender→Receiver）
+
+- 受信側は「最大数（Max Controllers）」の範囲で仮想コントローラーを自動作成します。
+- 送信側で指定した「コントローラー番号」は、その番号の仮想コントローラーに1:1で反映されます。
+- GUIの場合: 送信側の各コントローラーカードにある「Player #」で番号を直接指定できます。
+- CLIの場合: `--controller-map` で個別に番号を割当てます。
+
+CLIでの手順（番号割当て）:
+```bash
+# 1) 送信側で接続されているコントローラーのidentifierを取得
+input-link-sender --list-controllers
+
+# 出力例
+# Detected 2 controller(s):
+# - Xbox 360 Controller | identifier=030000005e0400008e02000000000000_1 | pygame_id=0
+# - DualShock 4         | identifier=050000004c050000c405000000000000_2 | pygame_id=1
+
+# 2) identifier:番号 の形式でマッピング（複数指定可）
+input-link-sender \
+  --host 192.168.1.50 --port 8765 \
+  --controller-map 030000005e0400008e02000000000000_1:1 \
+  --controller-map 050000004c050000c405000000000000_2:2
+```
+
+注意:
+- 番号は1〜8の範囲で指定可能です。
+- 受信側の最大数より大きい番号を割り当てても、上限を超える仮想コントローラーは作成されません。
+
+### GUIからの設定ポイント
+
+- 送信側（Sender）
+  - Receiver Host / Port / Polling Rate を変更可能
+  - 各コントローラーに対し「Enable」と「Player #（1〜8）」を設定
+- 受信側（Receiver）
+  - Listen Host / Listen Port / Max Controllers / Auto-create Virtual を変更可能

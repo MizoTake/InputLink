@@ -91,6 +91,11 @@ class ReceiverApp:
     async def _load_config(self) -> None:
         """Load application configuration."""
         try:
+            # If config already provided (e.g., from GUI), skip loading from file
+            if self.config is not None:
+                self.logger.info("Using provided configuration (skipping file load)")
+                return
+
             # Create config directory if needed
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -115,7 +120,7 @@ class ReceiverApp:
 
         # Initialize WebSocket server
         self.websocket_server = WebSocketServer(
-            host="0.0.0.0",  # Listen on all interfaces
+            host=self.config.receiver_config.listen_host,
             port=self.config.receiver_config.listen_port,
             input_callback=self._on_controller_input,
             status_callback=self._status_callback,
@@ -208,6 +213,11 @@ class ReceiverApp:
     help="Path to configuration file",
 )
 @click.option(
+    "--host",
+    default="0.0.0.0",
+    help="Server host/IP to listen on",
+)
+@click.option(
     "--port",
     default=8765,
     type=int,
@@ -226,6 +236,7 @@ class ReceiverApp:
 )
 def main(
     config: Optional[Path],
+    host: str,
     port: int,
     max_controllers: int,
     verbose: bool,
@@ -234,13 +245,23 @@ def main(
     # Create receiver app with verbose logging
     app = ReceiverApp(config_path=config, verbose=verbose)
 
-    # Override config if command line options provided
-    if config is None and (port != 8765 or max_controllers != 4):
-        # Create temporary config with command line values
+    # Apply CLI overrides by merging with existing config file (if any)
+    try:
+        cfg_path = config or (Path.home() / ".input-link" / "config.json")
+        base_cfg = ConfigModel.load_from_file(cfg_path)
+        if host and host != base_cfg.receiver_config.listen_host:
+            base_cfg.receiver_config.listen_host = host
+        if port and port != base_cfg.receiver_config.listen_port:
+            base_cfg.receiver_config.listen_port = port
+        if max_controllers and max_controllers != base_cfg.receiver_config.max_controllers:
+            base_cfg.receiver_config.max_controllers = max_controllers
+        app.config = base_cfg
+    except Exception:
         from input_link.models import ReceiverConfig, SenderConfig
         app.config = ConfigModel(
             sender_config=SenderConfig(receiver_host="127.0.0.1"),
             receiver_config=ReceiverConfig(
+                listen_host=host,
                 listen_port=port,
                 max_controllers=max_controllers,
             ),

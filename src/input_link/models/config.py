@@ -76,11 +76,33 @@ class SenderConfig(BaseModel):
 class ReceiverConfig(BaseModel):
     """Receiver application configuration."""
 
+    listen_host: str = Field(default="0.0.0.0", description="IP address to bind the server")
     listen_port: int = Field(default=8765, ge=1024, le=65535)
     max_controllers: int = Field(default=4, ge=1, le=8)
     auto_create_virtual: bool = Field(default=True)
     connection_timeout: float = Field(default=30.0, ge=5.0, le=300.0)
     platform_specific: PlatformSpecificConfig = Field(default_factory=PlatformSpecificConfig)
+
+    @field_validator("listen_host")
+    @classmethod
+    def validate_listen_host(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Listen host cannot be empty")
+
+        # Accept 0.0.0.0 (all interfaces) or valid IP/hostname
+        if v == "0.0.0.0":
+            return v
+
+        try:
+            ipaddress.ip_address(v)
+            return v
+        except ValueError:
+            pass
+
+        if not all(c.isalnum() or c in ".-_" for c in v):
+            raise ValueError("Invalid listen hostname format")
+        return v
 
 
 class ConfigModel(BaseModel):

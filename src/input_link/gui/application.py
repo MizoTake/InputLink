@@ -43,6 +43,19 @@ class AsyncWorker(QThread):
             verbose=False,
             log_callback=None,
         )
+        # Runtime settings captured from UI
+        self.sender_settings: Dict = {
+            "host": "127.0.0.1",
+            "port": 8765,
+            "polling_rate": 60,
+            "controllers": {},  # controller_id -> {enabled: bool, number: int}
+        }
+        self.receiver_settings: Dict = {
+            "host": "0.0.0.0",
+            "port": 8765,
+            "max_controllers": 4,
+            "auto_create": True,
+        }
 
     def run(self):
         """Run the async event loop in this thread."""
@@ -149,12 +162,33 @@ class AsyncWorker(QThread):
             self.logger.warning("Sender is already running.")
             self.log_message.emit("Sender is already running.")
             return
+        # Build config from current UI settings
+        from input_link.models import ConfigModel, SenderConfig, ReceiverConfig, ControllerConfig
+        controllers_cfg = {}
+        for cid, entry in self.sender_settings.get("controllers", {}).items():
+            if not entry.get("enabled", False):
+                continue
+            controllers_cfg[cid] = ControllerConfig(
+                assigned_number=entry.get("number", 1),
+                enabled=True,
+            )
+        cfg = ConfigModel(
+            sender_config=SenderConfig(
+                receiver_host=self.sender_settings.get("host", "127.0.0.1"),
+                receiver_port=int(self.sender_settings.get("port", 8765)),
+                polling_rate=int(self.sender_settings.get("polling_rate", 60)),
+                controllers=controllers_cfg,
+            ),
+            receiver_config=ReceiverConfig(),
+        )
 
         self.sender_app = SenderApp(
             log_callback=self._sender_log_callback,
             status_callback=self._sender_status_callback,
             verbose=False,
         )
+        # Inject config prepared from UI
+        self.sender_app.config = cfg
         asyncio.run_coroutine_threadsafe(self.sender_app.start(), self.loop)
 
     @Slot()
@@ -175,13 +209,67 @@ class AsyncWorker(QThread):
             self.logger.warning("Receiver is already running.")
             self.log_message.emit("Receiver is already running.")
             return
+        # Build config from current UI settings
+        from input_link.models import ConfigModel, SenderConfig, ReceiverConfig
+        cfg = ConfigModel(
+            sender_config=SenderConfig(receiver_host="127.0.0.1"),
+            receiver_config=ReceiverConfig(
+                listen_host=self.receiver_settings.get("host", "0.0.0.0"),
+                listen_port=int(self.receiver_settings.get("port", 8765)),
+                max_controllers=int(self.receiver_settings.get("max_controllers", 4)),
+                auto_create_virtual=bool(self.receiver_settings.get("auto_create", True)),
+            ),
+        )
 
         self.receiver_app = ReceiverApp(
             log_callback=self._receiver_log_callback,
             status_callback=self._receiver_status_callback,
             verbose=False,
         )
+        # Inject config prepared from UI
+        self.receiver_app.config = cfg
         asyncio.run_coroutine_threadsafe(self.receiver_app.start(), self.loop)
+
+    @Slot(dict)
+    def on_sender_settings_changed(self, payload: Dict):
+        t = payload.get("type")
+        if t == "sender_network":
+            host = payload.get("host")
+            port = payload.get("port")
+            rate = payload.get("polling_rate")
+            if isinstance(host, str):
+                self.sender_settings["host"] = host
+            if isinstance(port, int):
+                self.sender_settings["port"] = port
+            if isinstance(rate, int):
+                self.sender_settings["polling_rate"] = rate
+        elif t == "controller_number":
+            cid = payload.get("controller_id")
+            num = payload.get("number")
+            if cid:
+                entry = self.sender_settings["controllers"].setdefault(cid, {"enabled": True, "number": 1})
+                if isinstance(num, int):
+                    entry["number"] = num
+
+    @Slot(str, bool)
+    def on_sender_controller_enabled(self, controller_id: str, enabled: bool):
+        entry = self.sender_settings["controllers"].setdefault(controller_id, {"enabled": False, "number": 1})
+        entry["enabled"] = bool(enabled)
+
+    @Slot(dict)
+    def on_receiver_settings_changed(self, payload: Dict):
+        host = payload.get("host")
+        port = payload.get("port")
+        maxc = payload.get("max_controllers")
+        auto = payload.get("auto_create")
+        if isinstance(host, str):
+            self.receiver_settings["host"] = host
+        if isinstance(port, int):
+            self.receiver_settings["port"] = port
+        if isinstance(maxc, int):
+            self.receiver_settings["max_controllers"] = maxc
+        if isinstance(auto, bool):
+            self.receiver_settings["auto_create"] = auto
 
     @Slot()
     def stop_receiver(self):
@@ -346,6 +434,12 @@ class InputLinkApplication(QApplication):
                 if hasattr(self.sender_window, 'scan_btn'):
                     self.sender_window.scan_btn.clicked.connect(self.async_worker.scan_controllers)
                     print("Connected scan_btn signal")
+                if hasattr(self.sender_window, 'settings_changed'):
+                    self.sender_window.settings_changed.connect(self.async_worker.on_sender_settings_changed)
+                    print("Connected sender settings_changed signal")
+                if hasattr(self.sender_window, 'controller_enabled'):
+                    self.sender_window.controller_enabled.connect(self.async_worker.on_sender_controller_enabled)
+                    print("Connected sender controller_enabled signal")
                 print("SenderWindow signals connected successfully")
             else:
                 print("Warning: SenderWindow or AsyncWorker not available")
@@ -373,6 +467,9 @@ class InputLinkApplication(QApplication):
                 if hasattr(self.receiver_window, 'back_btn'):
                     self.receiver_window.back_btn.clicked.connect(self._show_main_window)
                     print("Connected back_btn signal")
+                if hasattr(self.receiver_window, 'settings_changed'):
+                    self.receiver_window.settings_changed.connect(self.async_worker.on_receiver_settings_changed)
+                    print("Connected receiver settings_changed signal")
                 print("ReceiverWindow signals connected successfully")
             else:
                 print("Warning: ReceiverWindow or AsyncWorker not available")

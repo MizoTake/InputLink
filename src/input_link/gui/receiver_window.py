@@ -297,6 +297,17 @@ class ReceiverWindow(QMainWindow):
         settings_layout.setHorizontalSpacing(12)
         settings_layout.setVerticalSpacing(8)
 
+        # Listen host
+        host_label = QLabel("Listen Host:")
+        host_label.setStyleSheet("color: #1D1D1F; font-size: 12px; font-weight: 600;")
+
+        from PySide6.QtWidgets import QComboBox
+        self.host_combo = QComboBox()
+        self.host_combo.setEditable(True)
+        self.host_combo.addItems(["0.0.0.0", "127.0.0.1", "192.168.1.10", "10.0.0.10"])
+        self.host_combo.setStyleSheet(self._get_input_style())
+        self.host_combo.currentTextChanged.connect(self._emit_settings)
+
         # Listen port
         port_label = QLabel("Listen Port:")
         port_label.setStyleSheet("color: #1D1D1F; font-size: 12px; font-weight: 600;")
@@ -305,6 +316,7 @@ class ReceiverWindow(QMainWindow):
         self.port_spin.setRange(1000, 65535)
         self.port_spin.setValue(8765)
         self.port_spin.setStyleSheet(self._get_input_style())
+        self.port_spin.valueChanged.connect(lambda _: self._emit_settings())
 
         # Max controllers
         controllers_label = QLabel("Max Controllers (0=No Limit):")
@@ -315,6 +327,7 @@ class ReceiverWindow(QMainWindow):
         self.max_controllers_spin.setValue(0)
         self.max_controllers_spin.setStyleSheet(self._get_input_style())
         self.max_controllers_spin.valueChanged.connect(self._update_controller_count)
+        self.max_controllers_spin.valueChanged.connect(lambda _: self._emit_settings())
 
         # Auto-create virtual controllers
         auto_create_label = QLabel("Auto-create Virtual:")
@@ -336,15 +349,26 @@ class ReceiverWindow(QMainWindow):
             }
         """)
 
-        settings_layout.addWidget(port_label, 0, 0)
-        settings_layout.addWidget(self.port_spin, 0, 1)
-        settings_layout.addWidget(controllers_label, 1, 0)
-        settings_layout.addWidget(self.max_controllers_spin, 1, 1)
-        settings_layout.addWidget(auto_create_label, 2, 0)
-        settings_layout.addWidget(self.auto_create_checkbox, 2, 1)
+        settings_layout.addWidget(host_label, 0, 0)
+        settings_layout.addWidget(self.host_combo, 0, 1)
+        settings_layout.addWidget(port_label, 1, 0)
+        settings_layout.addWidget(self.port_spin, 1, 1)
+        settings_layout.addWidget(controllers_label, 2, 0)
+        settings_layout.addWidget(self.max_controllers_spin, 2, 1)
+        settings_layout.addWidget(auto_create_label, 3, 0)
+        settings_layout.addWidget(self.auto_create_checkbox, 3, 1)
 
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
+
+    def _emit_settings(self):
+        """Emit current receiver settings (host/port/max/auto)."""
+        self.settings_changed.emit({
+            "host": self.host_combo.currentText().strip(),
+            "port": int(self.port_spin.value()),
+            "max_controllers": int(self.max_controllers_spin.value()),
+            "auto_create": bool(self.auto_create_checkbox.isChecked()),
+        })
 
     def _create_activity_log(self, layout: QVBoxLayout):
         """Create activity log section."""
@@ -504,6 +528,7 @@ class ReceiverWindow(QMainWindow):
         """
 
     def _setup_style(self):
+        self.auto_create_checkbox.toggled.connect(lambda _: self._emit_settings())
         """Setup window styling."""
         self.setStyleSheet("""
             QMainWindow {
