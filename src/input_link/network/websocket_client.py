@@ -62,7 +62,11 @@ class WebSocketClient:
     @property
     def connected(self) -> bool:
         """Check if client is connected."""
-        return self._connected and self._websocket and not self._websocket.closed
+        # Some websockets implementations/protocol versions don't expose a boolean
+        # `closed` attribute on the connection object. Rely on our internal state
+        # and presence of the websocket reference; sending will still be guarded
+        # by exception handling if the socket is no longer open.
+        return bool(self._connected and self._websocket is not None)
 
     async def start(self) -> None:
         """Start WebSocket client."""
@@ -92,8 +96,13 @@ class WebSocketClient:
         logger.info("Stopping WebSocket client")
 
         # Close WebSocket connection
-        if self._websocket and not self._websocket.closed:
-            await self._websocket.close()
+        if self._websocket:
+            # Closing is idempotent across websockets versions; avoid accessing
+            # non-portable attributes like `.closed`.
+            try:
+                await self._websocket.close()
+            except Exception:
+                pass
 
         # Cancel all tasks
         for task in list(self._tasks):

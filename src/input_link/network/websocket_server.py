@@ -177,12 +177,11 @@ class WebSocketServer:
             logger.error(f"Failed to send to client {client_id}: {e}")
             return False
 
-    async def _handle_client(self, websocket, path: str) -> None:
+    async def _handle_client(self, websocket) -> None:
         """Handle new client connection.
         
         Args:
             websocket: WebSocket connection
-            path: Connection path
         """
         client_id = str(uuid.uuid4())
         client_addr = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"

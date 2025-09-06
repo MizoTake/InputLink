@@ -8,7 +8,9 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from queue import Empty, Queue
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
+import asyncio
+import inspect
 
 import pygame
 
@@ -35,7 +37,8 @@ class InputCaptureEngine:
         self,
         controller_manager: ControllerManager,
         config: Optional[InputCaptureConfig] = None,
-        input_callback: Optional[Callable[[ControllerInputData], None]] = None,
+        input_callback: Optional[Callable[[ControllerInputData], Any]] = None,
+        event_loop: Optional[asyncio.AbstractEventLoop] = None,
     ):
         """Initialize input capture engine.
         
@@ -47,6 +50,7 @@ class InputCaptureEngine:
         self._controller_manager = controller_manager
         self._config = config or InputCaptureConfig()
         self._input_callback = input_callback
+        self._event_loop = event_loop
 
         self._running = False
         self._capture_thread: Optional[threading.Thread] = None
@@ -157,7 +161,17 @@ class InputCaptureEngine:
                             # Call callback if provided
                             if self._input_callback:
                                 try:
-                                    self._input_callback(input_data)
+                                    result = self._input_callback(input_data)
+                                    # If callback returned a coroutine, schedule it on provided loop
+                                    if inspect.iscoroutine(result):
+                                        if self._event_loop and self._event_loop.is_running():
+                                            self._event_loop.call_soon_threadsafe(
+                                                asyncio.create_task, result
+                                            )
+                                        else:
+                                            logger.error(
+                                                "Async input_callback provided but no running event loop set"
+                                            )
                                 except Exception as e:
                                     logger.error(f"Error in input callback: {e}")
 

@@ -112,9 +112,11 @@ class SenderApp:
         self.controller_manager.initialize()
 
         # Initialize input capture engine
+        loop = asyncio.get_running_loop()
         self.input_engine = InputCaptureEngine(
             self.controller_manager,
             input_callback=self._on_controller_input,
+            event_loop=loop,
         )
 
         # Initialize WebSocket client

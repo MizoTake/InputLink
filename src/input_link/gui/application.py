@@ -55,30 +55,36 @@ class AsyncWorker(QThread):
             self.loop.run_until_complete(self.loop.shutdown_asyncgens())
             self.loop.close()
 
+    async def _async_stop(self):
+        """Async shutdown: stop apps then the loop."""
+        try:
+            if self.sender_app and self.sender_app.running:
+                await self.sender_app.stop()
+        except Exception as e:
+            print(f"Error stopping sender app: {e}")
+        try:
+            if self.receiver_app and self.receiver_app.running:
+                await self.receiver_app.stop()
+        except Exception as e:
+            print(f"Error stopping receiver app: {e}")
+        # Stop the loop after services stop
+        try:
+            self.loop.stop()
+        except Exception as e:
+            print(f"Error stopping event loop: {e}")
+
     def stop(self):
         """Stop the worker thread with proper cleanup."""
         self._stop_requested = True
-        
-        # Stop applications gracefully
-        try:
-            if self.sender_app:
-                self.stop_sender()
-        except Exception as e:
-            print(f"Error stopping sender app: {e}")
-        
-        try:
-            if self.receiver_app:
-                self.stop_receiver()
-        except Exception as e:
-            print(f"Error stopping receiver app: {e}")
 
-        # Stop event loop
-        try:
-            if self.loop and not self.loop.is_closed():
-                self.loop.call_soon_threadsafe(self.loop.stop)
-        except Exception as e:
-            print(f"Error stopping event loop: {e}")
-        
+        # Schedule async stop sequence on the worker loop
+        if self.loop and not self.loop.is_closed():
+            fut = asyncio.run_coroutine_threadsafe(self._async_stop(), self.loop)
+            try:
+                fut.result(timeout=5)
+            except Exception as e:
+                print(f"Error during async stop sequence: {e}")
+
         # Cleanup worker thread
         try:
             self.quit()
@@ -212,6 +218,9 @@ class InputLinkApplication(QApplication):
         self.receiver_window: Optional[ReceiverWindow] = None
         self.stacked_widget: Optional[QStackedWidget] = None
         self.async_worker: Optional[AsyncWorker] = None
+
+        # Ensure graceful shutdown on app quit
+        self.aboutToQuit.connect(self._on_about_to_quit)
 
         self._setup_ui()
         self._setup_worker()
@@ -432,29 +441,25 @@ class InputLinkApplication(QApplication):
         self.main_window.add_log_message(message)
         self.receiver_window.add_log_message(message)
 
-    def closeEvent(self, event):
-        """Handle application close event with proper cleanup."""
+    def _on_about_to_quit(self):
+        """Ensure background threads and loops stop before app exit."""
         try:
-            print("Application close requested...")
-            
             # Stop async worker first
             if hasattr(self, 'async_worker') and self.async_worker:
-                print("Stopping async worker...")
+                print("Stopping async worker (aboutToQuit)...")
                 try:
                     self.async_worker.stop()
-                    # Give worker time to cleanup
-                    self.async_worker.wait(3000)  # Wait up to 3 seconds
+                    self.async_worker.wait(3000)
                 except Exception as e:
                     print(f"Error stopping async worker: {e}")
-            
+
             # Close stacked widget if it exists
             if hasattr(self, 'stacked_widget') and self.stacked_widget:
-                print("Closing stacked widget...")
                 try:
                     self.stacked_widget.close()
                 except Exception as e:
                     print(f"Error closing stacked widget: {e}")
-            
+
             # Close individual windows
             for window_name in ['main_window', 'sender_window', 'receiver_window']:
                 if hasattr(self, window_name):
@@ -464,14 +469,8 @@ class InputLinkApplication(QApplication):
                             window.close()
                         except Exception as e:
                             print(f"Error closing {window_name}: {e}")
-            
-            print("Application cleanup complete")
-            event.accept()
         except Exception as e:
-            print(f"Error during application close: {e}")
-            import traceback
-            traceback.print_exc()
-            event.accept()  # Force close even on error
+            print(f"Error during aboutToQuit cleanup: {e}")
 
 
 def run_gui_application():
