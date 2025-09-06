@@ -59,6 +59,9 @@ run-sender: ## Run sender application
 run-receiver: ## Run receiver application
 	$(PYTHON) -m input_link.apps.receiver
 
+run-gui: ## Run GUI application
+	$(PYTHON) -m input_link.apps.gui_main
+
 # Development shortcuts
 dev-install: install-dev ## Alias for install-dev
 

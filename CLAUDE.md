@@ -12,9 +12,15 @@ make build
 # Run applications
 make run-sender
 make run-receiver
+make run-gui         # Run GUI application
 
 # Clean build artifacts
 make clean
+
+# Alternative entry points
+python main.py gui     # Unified entry point for GUI
+python main.py sender  # CLI sender
+python main.py receiver # CLI receiver
 ```
 
 ### Testing
@@ -66,10 +72,19 @@ src/input_link/              # Main package
 │   ├── windows.py          # WindowsVirtualController (vgamepad)
 │   ├── macos.py            # MacOSVirtualController (keyboard simulation)
 │   └── controller_manager.py # VirtualControllerManager
-└── apps/                   # CLI applications
+├── gui/                    # GUI applications (Apple HIG compliant)
+│   ├── __init__.py         # GUI component exports
+│   ├── application.py      # InputLinkApplication, AsyncWorker
+│   ├── main_window.py      # MainWindow, ModernButton, StatusCard
+│   ├── sender_window.py    # SenderWindow, ControllerCard
+│   └── receiver_window.py  # ReceiverWindow, VirtualControllerCard
+└── apps/                   # Application entry points
     ├── __init__.py         # App exports
-    ├── sender.py           # SenderApp CLI
-    └── receiver.py         # ReceiverApp CLI
+    ├── sender.py           # SenderApp CLI with callback support
+    ├── receiver.py         # ReceiverApp CLI with callback support
+    ├── gui_main.py         # Unified GUI entry point
+    ├── gui_sender.py       # GUI-specific sender entry
+    └── gui_receiver.py     # GUI-specific receiver entry
 
 build/                      # Build system
 ├── build.py                # Python build script
@@ -122,10 +137,11 @@ tests/                      # Test suite
    - `MacOSVirtualController`: Keyboard simulation fallback
    - `VirtualControllerManager`: Multi-controller lifecycle management
 
-5. **CLI Applications** (`apps/`):
-   - `SenderApp`: Controller capture and WebSocket transmission
-   - `ReceiverApp`: Input reception and virtual controller simulation
-   - Click-based CLI with configuration overrides
+5. **Applications** (`apps/` & `gui/`):
+   - **CLI Applications**: `SenderApp` and `ReceiverApp` with async architecture
+   - **GUI Applications**: Apple HIG-compliant PySide6 interface
+   - **Unified Entry Point**: `main.py` with subcommands for CLI/GUI modes
+   - **Callback Architecture**: CLI apps support log/status callbacks for GUI integration
 
 ### Data Flow
 
@@ -135,35 +151,74 @@ tests/                      # Test suite
 
 ### Technology Stack
 
+**Core Framework**:
 - **Python 3.8+**: Cross-platform compatibility
 - **pygame**: Controller input capture
 - **websockets**: Async WebSocket communication  
 - **pydantic v2**: Data validation and serialization
+- **asyncio**: Async architecture throughout
+
+**Platform Integration**:
 - **vgamepad** (Windows): ViGEm virtual controller integration
 - **pynput**: macOS keyboard simulation
-- **click**: CLI interface
+- **PySide6**: Cross-platform GUI framework (Qt-based)
+
+**Development Tools**:
+- **click**: CLI interface framework
 - **pytest**: Test framework with async support
 - **PyInstaller**: Executable creation
+- **black/isort/ruff**: Code formatting and linting
+- **mypy**: Static type checking
 
 ### Platform Support
 
 **Windows**:
 - Virtual controllers via ViGEm Bus Driver (Xbox 360 emulation)
 - DirectInput and XInput support
-- Executable builds with NSIS installer
+- Executable builds: `InputLink-Sender.exe`, `InputLink-Receiver.exe`, `InputLink-GUI.exe`
+- NSIS installer available
 
 **macOS**:  
-- Keyboard simulation for virtual input
-- App bundle creation with DMG installer
-- Accessibility permissions required
+- Keyboard simulation for virtual input (no driver required)
+- App bundle creation (.app files) with DMG installer
+- Accessibility permissions required for input simulation
+
+## GUI Architecture
+
+### Apple HIG Compliance
+- **Design System**: Follows Apple Human Interface Guidelines for consistency
+- **Color Palette**: Apple system colors (#007AFF, #34C759, #FF3B30, etc.)
+- **Typography**: San Francisco font system (-apple-system stack)
+- **Layout**: Proper spacing (16-24px), rounded corners (8-12px), visual hierarchy
+
+### GUI Components
+- **MainWindow**: Application overview with status cards and navigation
+- **SenderWindow**: Controller detection, configuration, and capture controls
+- **ReceiverWindow**: Virtual controller management and server status
+- **ModernButton**: Apple HIG-compliant button styles (primary, secondary, destructive)
+- **StatusCard**: Real-time status display with color-coded states
+- **ControllerCard**: Individual controller management with enable/disable toggles
+
+### Threading Architecture
+- **Main Thread**: Qt GUI event loop
+- **AsyncWorker Thread**: Separate thread with asyncio event loop for backend operations
+- **Signal/Slot Communication**: Qt signals for thread-safe GUI updates
+- **Graceful Shutdown**: Proper cleanup of async tasks and resources
+
+### Integration Patterns
+- **Callback Architecture**: CLI apps (`SenderApp`, `ReceiverApp`) support callback functions
+- **Status Updates**: Real-time status propagation from backend to GUI
+- **Log Integration**: Centralized logging with GUI display
+- **Window Management**: Multi-window navigation with proper state management
 
 ## Build System
 
 ### PyInstaller Configuration
 - One-file executables with embedded dependencies
-- Hidden imports for dynamic modules (pygame, websockets, vgamepad)
-- Platform-specific exclusions to reduce size
-- Icon support and console/GUI mode selection
+- Hidden imports for dynamic modules (pygame, websockets, vgamepad, PySide6)
+- Platform-specific exclusions to reduce size (PyQt5/6, tkinter, matplotlib)
+- Icon support and console/GUI mode selection (automatic GUI detection)
+- Three executables generated: Sender, Receiver, and unified GUI application
 
 ### Cross-Platform Building
 - GitHub Actions for automated builds
@@ -194,13 +249,81 @@ tests/                      # Test suite
 - Automated releases on git tags
 - Artifact upload for Windows/macOS builds
 
+## Application Entry Points
+
+### Unified Entry Point
+```bash
+python main.py                    # Show usage information
+python main.py --version          # Show version
+python main.py gui                # Launch GUI application
+python main.py sender [OPTIONS]   # CLI sender with options
+python main.py receiver [OPTIONS] # CLI receiver with options
+```
+
+### Direct Module Execution
+```bash
+# CLI applications (for development)
+python -m input_link.apps.sender
+python -m input_link.apps.receiver
+
+# GUI applications (for development/testing)
+python -m input_link.apps.gui_main
+python -m input_link.gui.application
+```
+
+### Built Executables
+```bash
+# Windows
+.\dist\InputLink-GUI.exe        # Unified GUI application
+.\dist\InputLink-Sender.exe     # CLI sender
+.\dist\InputLink-Receiver.exe   # CLI receiver
+
+# macOS
+./dist/InputLink-GUI.app        # GUI application bundle
+./dist/InputLink-Sender.app     # Sender app bundle  
+./dist/InputLink-Receiver.app   # Receiver app bundle
+```
+
+### Configuration Files
+- Default location: `~/.input-link/config.json`
+- Auto-generated on first run with sensible defaults
+- CLI parameters override config file settings
+- JSON schema validation via Pydantic models
+
 ## Development Notes
 
-- **Testable Design**: All components support dependency injection and mocking
-- **Type Safety**: Complete type hints with mypy validation
-- **Error Handling**: Comprehensive logging and graceful degradation
-- **Performance**: Async I/O throughout, efficient input polling
-- **Security**: No hardcoded credentials, configurable network settings
+### Architecture Patterns
+- **Async/Await**: All I/O operations use asyncio for non-blocking execution
+- **Dependency Injection**: Components accept callbacks/dependencies for testability
+- **Factory Pattern**: Platform-specific virtual controller creation
+- **Observer Pattern**: Status updates via callbacks and Qt signals
+- **Model-View Separation**: Core logic separate from GUI presentation
+
+### Key Implementation Details
+- **Thread Safety**: Qt signals/slots ensure thread-safe GUI updates
+- **Error Handling**: Comprehensive try/catch with graceful degradation
+- **Resource Management**: Proper cleanup of async tasks, threads, and hardware
+- **Input Polling**: 60Hz polling rate with dead zone handling for controllers
+- **Network Resilience**: Automatic WebSocket reconnection with exponential backoff
+
+### Common Development Patterns
+```python
+# Adding new callback support to CLI apps
+class MyApp:
+    def __init__(self, log_callback=None, status_callback=None):
+        self._log_callback = log_callback
+        self._status_callback = status_callback
+
+# GUI-backend integration via AsyncWorker
+@Slot()
+def my_gui_action(self):
+    self.async_worker.do_something()
+
+# Pydantic v2 model definition
+class MyModel(BaseModel):
+    field: str = Field(..., min_length=1)
+    model_config = ConfigDict(validate_assignment=True)
+```
 
 ### Code Quality Tools
 - **black**: Code formatting

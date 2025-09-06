@@ -1,19 +1,20 @@
 """Base classes for virtual controller management."""
 
+from __future__ import annotations
+
 import logging
-from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
 import platform
+from abc import ABC, abstractmethod
+from typing import Optional
 
-from ..models import ControllerInputData, ButtonState, ControllerState
-
+from input_link.models import ControllerInputData
 
 logger = logging.getLogger(__name__)
 
 
 class VirtualController(ABC):
     """Abstract base class for virtual controllers."""
-    
+
     def __init__(self, controller_number: int):
         """Initialize virtual controller.
         
@@ -22,12 +23,12 @@ class VirtualController(ABC):
         """
         self.controller_number = controller_number
         self._connected = False
-        
+
     @property
     def connected(self) -> bool:
         """Check if virtual controller is connected."""
         return self._connected
-    
+
     @abstractmethod
     async def connect(self) -> bool:
         """Connect virtual controller.
@@ -35,13 +36,11 @@ class VirtualController(ABC):
         Returns:
             True if connected successfully, False otherwise
         """
-        pass
-    
+
     @abstractmethod
     async def disconnect(self) -> None:
-        """Disconnect virtual controller.""" 
-        pass
-    
+        """Disconnect virtual controller."""
+
     @abstractmethod
     async def update_state(self, input_data: ControllerInputData) -> bool:
         """Update controller state with input data.
@@ -52,13 +51,11 @@ class VirtualController(ABC):
         Returns:
             True if updated successfully, False otherwise
         """
-        pass
-    
+
     @abstractmethod
     def reset_state(self) -> None:
         """Reset controller to neutral state."""
-        pass
-    
+
     def __repr__(self) -> str:
         """String representation."""
         return f"{self.__class__.__name__}(controller_number={self.controller_number}, connected={self.connected})"
@@ -66,7 +63,7 @@ class VirtualController(ABC):
 
 class VirtualControllerFactory:
     """Factory for creating platform-specific virtual controllers."""
-    
+
     @staticmethod
     def create_controller(controller_number: int, **kwargs) -> Optional[VirtualController]:
         """Create virtual controller for current platform.
@@ -79,19 +76,18 @@ class VirtualControllerFactory:
             Virtual controller instance or None if unsupported
         """
         current_platform = platform.system().lower()
-        
+
         if current_platform == "windows":
             return VirtualControllerFactory._create_windows_controller(
-                controller_number, **kwargs
+                controller_number, **kwargs,
             )
-        elif current_platform == "darwin":  # macOS
+        if current_platform == "darwin":  # macOS
             return VirtualControllerFactory._create_macos_controller(
-                controller_number, **kwargs
+                controller_number, **kwargs,
             )
-        else:
-            logger.error(f"Unsupported platform: {current_platform}")
-            return None
-    
+        logger.error(f"Unsupported platform: {current_platform}")
+        return None
+
     @staticmethod
     def _create_windows_controller(controller_number: int, **kwargs) -> Optional[VirtualController]:
         """Create Windows virtual controller using vgamepad.
@@ -104,7 +100,7 @@ class VirtualControllerFactory:
             Windows virtual controller or None
         """
         try:
-            from .windows import WindowsVirtualController
+            from input_link.virtual.windows import WindowsVirtualController
             return WindowsVirtualController(controller_number, **kwargs)
         except ImportError as e:
             logger.error(f"Failed to import Windows virtual controller: {e}")
@@ -112,7 +108,7 @@ class VirtualControllerFactory:
         except Exception as e:
             logger.error(f"Failed to create Windows virtual controller: {e}")
             return None
-    
+
     @staticmethod
     def _create_macos_controller(controller_number: int, **kwargs) -> Optional[VirtualController]:
         """Create macOS virtual controller using pygame.
@@ -125,7 +121,7 @@ class VirtualControllerFactory:
             macOS virtual controller or None
         """
         try:
-            from .macos import MacOSVirtualController
+            from input_link.virtual.macos import MacOSVirtualController
             return MacOSVirtualController(controller_number, **kwargs)
         except ImportError as e:
             logger.error(f"Failed to import macOS virtual controller: {e}")

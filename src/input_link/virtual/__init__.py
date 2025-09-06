@@ -1,7 +1,7 @@
 """Virtual controller management components."""
 
-from .controller_manager import VirtualControllerManager
 from .base import VirtualController, VirtualControllerFactory
+from .controller_manager import VirtualControllerManager
 
 __all__ = [
     "VirtualControllerManager",
