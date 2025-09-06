@@ -146,6 +146,8 @@ class AsyncWorker(QThread):
             self.controller_manager = ControllerManager()
 
         try:
+            # Ensure pygame joystick subsystem is initialized
+            self.controller_manager.initialize()
             controllers = self.controller_manager.scan_controllers()
             self.controller_detected.emit(controllers)
             self.logger.info(f"Found {len(controllers)} controllers")

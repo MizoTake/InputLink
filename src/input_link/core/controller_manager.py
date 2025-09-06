@@ -185,12 +185,21 @@ class ControllerManager:
             logger.error(f"Invalid controller number: {number}")
             return False
 
-        # Find controller by identifier
+        # Find controller by identifier; if not found, try GUID-only fallback
         controller = None
         for c in self._controllers.values():
             if c.identifier == controller_id:
                 controller = c
                 break
+
+        if not controller:
+            # Fallback: match by GUID prefix (identifier is GUID_instanceId)
+            guid_key = controller_id.split("_")[0] if controller_id else ""
+            if guid_key:
+                candidates = [c for c in self._controllers.values() if c.guid == guid_key]
+                if candidates:
+                    # Prefer unassigned candidate
+                    controller = next((c for c in candidates if c.assigned_number is None), candidates[0])
 
         if not controller:
             logger.error(f"Controller not found: {controller_id}")
