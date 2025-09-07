@@ -1,16 +1,6 @@
 # Input Link
 
- ローカルネットワーク上で、送信側PCのゲームコントローラー入力を受信側PCへWebSocket経由で転送するシステムです。
-
-## 📚 ドキュメント
-
-詳細なドキュメントは [docs/](docs/) フォルダに整理されています。
-
-- 📖 [ユーザーガイド](docs/user-guide/README.md) - インストールと使用方法
-- 🛠 [開発ガイド](docs/development/) - ビルドと開発環境
-- 🏗 [アーキテクチャ](docs/architecture/) - システム設計
-- 🧪 [テストガイド](docs/testing/) - テスト戦略と実行方法
-- 📋 [仕様書](docs/specifications/) - 詳細仕様
+ローカルネットワーク上で、送信側PCのゲームコントローラー入力を受信側PCへWebSocket経由で転送するシステムです。
 
 ## 特長
 
@@ -113,7 +103,7 @@ make clean
 - Windows: `build\build.bat` または `make build-windows`
 - macOS: `./build/build.sh` または `make build-macos`
 
-詳細は [BUILD.md](docs/development/BUILD.md) を参照してください。
+詳細は [BUILD.md](BUILD.md) を参照してください。
 
 ## アーキテクチャ
 
@@ -142,8 +132,6 @@ make clean
 - Receiver: 入力を受信し仮想コントローラーへ反映
 - Models: Pydanticで検証されたデータモデル
 - Network: 非同期WebSocket通信と再接続処理
-
-詳細は [システム概要](docs/architecture/system-overview.md) を参照してください。
 
 ## 対応プラットフォーム
 
@@ -194,8 +182,6 @@ pytest -m integration # 結合テスト
 pytest -m e2e         # E2Eテスト
 ```
 
-詳細なテスト戦略は [テストガイド](docs/testing/test-strategy.md) を参照してください。
-
 ### 手動動作確認（Gamepad）
 
 受信側PC（Windows / XInput / ViGEm）で仮想コントローラーの反映を簡単に確認するには、以下のサイトをブラウザで開いてください。
@@ -230,8 +216,7 @@ make format            # フォーマット適用
 make build             # 実行ファイルのビルド
 make clean             # 生成物のクリーン
 ```
-
-## ローカルネットワークでの利用（他PC接続向け）
+# ローカルネットワークでの利用（他PC接続向け）
 
 同一LAN内の別PCから接続しやすいように、受信側の待受IP（Listen Host）と、送信側の接続先IP（Receiver Host）を個別に設定できます。
 
