@@ -50,6 +50,31 @@ class WebSocketServer:
         self._clients: Dict[str, websockets.WebSocketServerProtocol] = {}
         self._client_tasks: Dict[str, Set[asyncio.Task]] = {}
 
+    # Expose callbacks as properties for tests and external wiring
+    @property
+    def input_callback(self):
+        return self._input_callback
+
+    @input_callback.setter
+    def input_callback(self, cb):
+        self._input_callback = cb
+
+    @property
+    def message_callback(self):
+        return self._message_callback
+
+    @message_callback.setter
+    def message_callback(self, cb):
+        self._message_callback = cb
+
+    @property
+    def status_callback(self):
+        return self._status_callback
+
+    @status_callback.setter
+    def status_callback(self, cb):
+        self._status_callback = cb
+
     def _fire_status_callback(self, status: str, **kwargs):
         if self._status_callback:
             try:
@@ -61,6 +86,11 @@ class WebSocketServer:
     def address(self) -> str:
         """Get server address."""
         return f"{self._host}:{self._port}"
+
+    @property
+    def port(self) -> int:
+        """Get the bound TCP port (after start)."""
+        return self._port
 
     @property
     def running(self) -> bool:
@@ -88,6 +118,13 @@ class WebSocketServer:
                 self._port,
                 ping_timeout=self._ping_timeout,
             )
+            # If port was 0 (ephemeral), update to the actually bound port
+            try:
+                if self._port == 0 and getattr(self._server, "sockets", None):
+                    sock = self._server.sockets[0]
+                    self._port = int(sock.getsockname()[1])
+            except Exception:
+                pass
             self._running = True
             logger.info(f"WebSocket server listening on {self.address}")
             self._fire_status_callback("listening", address=self.address)
@@ -177,14 +214,19 @@ class WebSocketServer:
             logger.error(f"Failed to send to client {client_id}: {e}")
             return False
 
-    async def _handle_client(self, websocket) -> None:
+    async def _handle_client(self, websocket, path=None, client_addr: Optional[str] = None) -> None:
         """Handle new client connection.
         
         Args:
             websocket: WebSocket connection
         """
         client_id = str(uuid.uuid4())
-        client_addr = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
+        # Allow tests to override the computed address for fakes
+        if not client_addr:
+            try:
+                client_addr = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
+            except Exception:
+                client_addr = "unknown"
 
         logger.info(f"New client connected: {client_id} from {client_addr}")
 

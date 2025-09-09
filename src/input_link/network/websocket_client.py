@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Callable, Optional, Set
+from typing import Callable, Optional, Set, Any
 
 import websockets
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError, ConnectionClosedOK
@@ -13,6 +13,20 @@ from input_link.models import ControllerInputData
 from input_link.network.message_protocol import NetworkMessage
 
 logger = logging.getLogger(__name__)
+
+
+class _LenQueue:
+    """Thin wrapper around asyncio.Queue that supports len()."""
+
+    def __init__(self, maxsize: int):
+        self._q: asyncio.Queue[Any] = asyncio.Queue(maxsize=maxsize)
+
+    def __len__(self) -> int:  # for tests that use len(queue)
+        return self._q.qsize()
+
+    # Delegate common queue APIs used by client
+    def __getattr__(self, name: str):
+        return getattr(self._q, name)
 
 
 class WebSocketClient:
@@ -25,6 +39,7 @@ class WebSocketClient:
         reconnect_interval: float = 1.0,
         max_reconnect_attempts: int = 10,
         ping_timeout: float = 20.0,
+        message_queue_size: int = 100,
         message_callback: Optional[Callable[[NetworkMessage], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
     ):
@@ -51,7 +66,9 @@ class WebSocketClient:
         self._running = False
         self._connected = False
         self._reconnect_attempts = 0
-        self._message_queue: asyncio.Queue[NetworkMessage] = asyncio.Queue()
+        # Bounded queue; tests inspect `_max_queue_size` and queue length
+        self._max_queue_size = int(message_queue_size)
+        self._message_queue: _LenQueue = _LenQueue(maxsize=self._max_queue_size)
         self._tasks: Set[asyncio.Task] = set()
 
     @property
@@ -165,26 +182,26 @@ class WebSocketClient:
             try:
                 if self._status_callback:
                     self._status_callback("connecting")
-                async with websockets.connect(
+                websocket = await websockets.connect(
                     self.uri,
                     ping_timeout=self._ping_timeout,
                     close_timeout=10,
-                ) as websocket:
-                    self._websocket = websocket
-                    self._connected = True
-                    self._reconnect_attempts = 0
+                )
+                self._websocket = websocket
+                self._connected = True
+                self._reconnect_attempts = 0
 
-                    logger.info(f"Connected to WebSocket server at {self.uri}")
-                    if self._status_callback:
-                        self._status_callback("connected")
+                logger.info(f"Connected to WebSocket server at {self.uri}")
+                if self._status_callback:
+                    self._status_callback("connected")
 
-                    # Create message receiver task
-                    receiver_task = asyncio.create_task(self._message_receiver(websocket))
-                    self._tasks.add(receiver_task)
-                    receiver_task.add_done_callback(self._tasks.discard)
+                # Create message receiver task
+                receiver_task = asyncio.create_task(self._message_receiver(websocket))
+                self._tasks.add(receiver_task)
+                receiver_task.add_done_callback(self._tasks.discard)
 
-                    # Wait for connection to close
-                    await websocket.wait_closed()
+                # Wait for connection to close
+                await websocket.wait_closed()
 
             except (ConnectionClosed, ConnectionClosedOK, ConnectionClosedError) as e:
                 logger.warning(f"WebSocket connection closed: {e}")

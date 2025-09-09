@@ -373,7 +373,7 @@ class InputLinkApplication(QApplication):
             # Show stacked widget with main window
             print("Showing main window...")
             self.stacked_widget.setWindowTitle("Input Link")
-            self.stacked_widget.resize(480, 650)  # Set minimum size
+            self.stacked_widget.resize(600, 750)  # Set default size
             self.stacked_widget.setCurrentWidget(self.main_window)
             self.stacked_widget.show()
             self.stacked_widget.raise_()

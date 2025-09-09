@@ -23,117 +23,13 @@ from PySide6.QtWidgets import (
 )
 
 from input_link.gui.main_window import ModernButton, StatusCard
+from input_link.gui.theme_manager import theme_manager
+from input_link.gui.enhanced_widgets import (
+    AnimatedButton, EnhancedStatusCard, NetworkQualityWidget, EnhancedScrollArea,
+    EnhancedVirtualControllerCard
+)
 
 
-class VirtualControllerCard(QFrame):
-    """Apple HIG-compliant virtual controller status card."""
-
-    def __init__(self, controller_number: int):
-        super().__init__()
-        self.controller_number = controller_number
-        self.is_connected = False
-        self.client_info = None
-        self._setup_ui()
-        self._setup_style()
-
-    def _setup_ui(self):
-        """Setup the virtual controller card UI."""
-        layout = QVBoxLayout()
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(6)
-
-        # Header
-        header_layout = QHBoxLayout()
-
-        # Controller info
-        info_layout = QVBoxLayout()
-        info_layout.setSpacing(2)
-
-        # Controller title
-        title_label = QLabel(f"Virtual Controller {self.controller_number}")
-        title_font = QFont()
-        title_font.setPointSize(12)
-        title_font.setWeight(QFont.Weight.DemiBold)
-        title_label.setFont(title_font)
-        title_label.setStyleSheet("color: #1D1D1F;")
-
-        # Connection status
-        self.status_label = QLabel("Waiting for connection...")
-        status_font = QFont()
-        status_font.setPointSize(10)
-        self.status_label.setFont(status_font)
-        self.status_label.setStyleSheet("color: #8E8E93;")
-
-        info_layout.addWidget(title_label)
-        info_layout.addWidget(self.status_label)
-
-        # Connection indicator
-        self.connection_indicator = QFrame()
-        self.connection_indicator.setFixedSize(12, 12)
-        self.connection_indicator.setStyleSheet("""
-            QFrame {
-                background-color: #8E8E93;
-                border-radius: 6px;
-            }
-        """)
-
-        header_layout.addLayout(info_layout)
-        header_layout.addStretch()
-        header_layout.addWidget(self.connection_indicator)
-
-        # Client info (hidden by default)
-        self.client_info_label = QLabel()
-        client_font = QFont()
-        client_font.setPointSize(9)
-        self.client_info_label.setFont(client_font)
-        self.client_info_label.setStyleSheet("color: #8E8E93;")
-        self.client_info_label.hide()
-
-        layout.addLayout(header_layout)
-        layout.addWidget(self.client_info_label)
-        self.setLayout(layout)
-
-    def _setup_style(self):
-        """Setup Apple HIG card styling."""
-        self.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border-radius: 12px;
-                border: 1px solid #E5E5EA;
-            }
-        """)
-        self.setFixedHeight(75)
-
-    def update_connection(self, connected: bool, client_info: str = None):
-        """Update connection status."""
-        self.is_connected = connected
-        self.client_info = client_info
-
-        if connected:
-            self.status_label.setText("Connected & Active")
-            self.status_label.setStyleSheet("color: #34C759;")
-            self.connection_indicator.setStyleSheet("""
-                QFrame {
-                    background-color: #34C759;
-                    border-radius: 6px;
-                }
-            """)
-
-            if client_info:
-                self.client_info_label.setText(f"From: {client_info}")
-                self.client_info_label.show()
-                self.setFixedHeight(95)
-        else:
-            self.status_label.setText("Waiting for connection...")
-            self.status_label.setStyleSheet("color: #8E8E93;")
-            self.connection_indicator.setStyleSheet("""
-                QFrame {
-                    background-color: #8E8E93;
-                    border-radius: 6px;
-                }
-            """)
-            self.client_info_label.hide()
-            self.setFixedHeight(75)
 
 
 class ReceiverWindow(QMainWindow):
@@ -147,16 +43,19 @@ class ReceiverWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.is_running = False
-        self.virtual_controller_cards: List[VirtualControllerCard] = []
+        self.virtual_controller_cards: List[EnhancedVirtualControllerCard] = []
         self.client_connections: Dict[str, str] = {}
         self._setup_ui()
         self._setup_style()
+        
+        # Connect to theme changes
+        theme_manager.theme_changed.connect(self._setup_style)
 
     def _setup_ui(self):
         """Setup the receiver window UI."""
         self.setWindowTitle("Input Link - Receiver")
-        self.setMinimumSize(450, 650)
-        self.resize(480, 700)
+        self.setMinimumSize(550, 750)
+        self.resize(620, 800)
 
         # Central widget
         central_widget = QWidget()
@@ -164,8 +63,8 @@ class ReceiverWindow(QMainWindow):
 
         # Main layout
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(24, 20, 24, 20)
-        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(20, 16, 20, 16)  # Reduced margins
+        main_layout.setSpacing(16)  # Reduced spacing from 20 to 16
         central_widget.setLayout(main_layout)
 
         # Header
@@ -237,31 +136,9 @@ class ReceiverWindow(QMainWindow):
         group_layout = QVBoxLayout()
         group_layout.setContentsMargins(16, 16, 16, 16)
         
-        # Create scroll area
-        self.controllers_scroll = QScrollArea()
-        self.controllers_scroll.setWidgetResizable(True)
-        self.controllers_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.controllers_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.controllers_scroll.setMaximumHeight(300)  # Limit height to prevent window overflow
-        self.controllers_scroll.setStyleSheet("""
-            QScrollArea {
-                border: none;
-                background-color: transparent;
-            }
-            QScrollBar:vertical {
-                background: #F2F2F7;
-                width: 12px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:vertical {
-                background: #C7C7CC;
-                border-radius: 6px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #AEAEB2;
-            }
-        """)
+        # Create enhanced scroll area
+        self.controllers_scroll = EnhancedScrollArea()
+        self.controllers_scroll.set_max_height(380)  # Increased from 300 to 380
         
         # Create widget to contain the controller cards
         controllers_widget = QWidget()
@@ -269,9 +146,9 @@ class ReceiverWindow(QMainWindow):
         self.controllers_layout.setContentsMargins(0, 0, 0, 0)
         self.controllers_layout.setSpacing(8)
 
-        # Create virtual controller cards (start with 4, expandable based on needs)
-        for i in range(1, 5):  # Default 4 controllers  
-            card = VirtualControllerCard(i)
+        # Create virtual controller cards in priority order (start with 4, expandable based on needs)
+        for i in range(1, 5):  # Default 4 controllers - most commonly used first  
+            card = EnhancedVirtualControllerCard(i)
             self.virtual_controller_cards.append(card)
             self.controllers_layout.addWidget(card)
         
@@ -379,7 +256,7 @@ class ReceiverWindow(QMainWindow):
         log_layout.setContentsMargins(16, 16, 16, 16)
 
         self.activity_log = QTextEdit()
-        self.activity_log.setMaximumHeight(120)
+        self.activity_log.setMaximumHeight(90)  # Reduced from 120 to 90
         self.activity_log.setReadOnly(True)
         self.activity_log.setStyleSheet("""
             QTextEdit {
@@ -401,10 +278,10 @@ class ReceiverWindow(QMainWindow):
         """Create control buttons."""
         button_layout = QHBoxLayout()
 
-        self.start_btn = ModernButton("Start Server", "primary")
+        self.start_btn = AnimatedButton("Start Server", "primary")
         self.start_btn.clicked.connect(self._toggle_server)
 
-        self.back_btn = ModernButton("Back to Main", "secondary")
+        self.back_btn = AnimatedButton("Back to Main", "secondary")
 
         button_layout.addWidget(self.start_btn)
         button_layout.addWidget(self.back_btn)
@@ -444,7 +321,7 @@ class ReceiverWindow(QMainWindow):
         # Add new cards if needed
         while len(self.virtual_controller_cards) < count:
             card_number = len(self.virtual_controller_cards) + 1
-            card = VirtualControllerCard(card_number)
+            card = EnhancedVirtualControllerCard(card_number)
             self.virtual_controller_cards.append(card)
 
             # Add to the controllers layout (insert before stretch)
@@ -460,11 +337,11 @@ class ReceiverWindow(QMainWindow):
         self.connections_card.update_status(str(count), "#007AFF" if count > 0 else "#8E8E93")
 
     def update_virtual_controller(self, controller_number: int, connected: bool, client_info: str = None):
-        """Update virtual controller connection status."""
+        """Update virtual controller connection status with smart positioning."""
         # Ensure we have enough cards for this controller number
         while len(self.virtual_controller_cards) < controller_number:
             card_number = len(self.virtual_controller_cards) + 1
-            card = VirtualControllerCard(card_number)
+            card = EnhancedVirtualControllerCard(card_number)
             self.virtual_controller_cards.append(card)
 
             # Add to the controllers layout (insert before stretch)
@@ -474,6 +351,40 @@ class ReceiverWindow(QMainWindow):
         if 1 <= controller_number <= len(self.virtual_controller_cards):
             card = self.virtual_controller_cards[controller_number - 1]
             card.update_connection(connected, client_info)
+            
+            # Reorder cards to show active ones first
+            self._reorder_virtual_controller_cards()
+
+    def _reorder_virtual_controller_cards(self):
+        """Reorder virtual controller cards to show active ones first."""
+        if not self.virtual_controller_cards:
+            return
+        
+        # Sort cards by connection status and controller number
+        sorted_cards = sorted(
+            self.virtual_controller_cards, 
+            key=lambda card: (
+                not card.is_connected,  # Connected first (False sorts before True)
+                card.controller_number  # Then by controller number
+            )
+        )
+        
+        # Remove all cards from layout
+        for card in self.virtual_controller_cards:
+            self.controllers_layout.removeWidget(card)
+        
+        # Remove the stretch item temporarily
+        stretch_item = self.controllers_layout.takeAt(self.controllers_layout.count() - 1)
+        
+        # Re-add cards in sorted order
+        for card in sorted_cards:
+            self.controllers_layout.addWidget(card)
+        
+        # Re-add stretch to push cards to top
+        if stretch_item:
+            self.controllers_layout.addItem(stretch_item)
+        else:
+            self.controllers_layout.addStretch()
 
     def add_log_message(self, message: str):
         """Add message to activity log."""
@@ -491,50 +402,13 @@ class ReceiverWindow(QMainWindow):
 
     def _get_group_style(self) -> str:
         """Get consistent group box styling."""
-        return """
-            QGroupBox {
-                font-size: 13px;
-                font-weight: 600;
-                color: #1D1D1F;
-                border: 1px solid #E5E5EA;
-                border-radius: 12px;
-                margin: 8px 0;
-                padding-top: 8px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 12px;
-                padding: 0 8px 0 8px;
-                background-color: #F2F2F7;
-            }
-        """
+        return theme_manager.get_group_style()
 
     def _get_input_style(self) -> str:
         """Get consistent input field styling."""
-        return """
-            QSpinBox {
-                background-color: white;
-                border: 1px solid #D1D1D6;
-                border-radius: 6px;
-                padding: 6px 8px;
-                font-size: 12px;
-                color: #1D1D1F;
-                min-height: 20px;
-            }
-            QSpinBox:focus {
-                border-color: #007AFF;
-                outline: none;
-            }
-        """
+        return theme_manager.get_input_style()
 
     def _setup_style(self):
-        self.auto_create_checkbox.toggled.connect(lambda _: self._emit_settings())
         """Setup window styling."""
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #F2F2F7;
-            }
-            QWidget {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            }
-        """)
+        self.auto_create_checkbox.toggled.connect(lambda _: self._emit_settings())
+        self.setStyleSheet(theme_manager.get_window_style())

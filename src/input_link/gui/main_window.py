@@ -24,132 +24,38 @@ from PySide6.QtWidgets import (
 )
 
 from input_link.models import ConfigModel
+from input_link.gui.theme_manager import theme_manager
+from input_link.gui.enhanced_widgets import (
+    AnimatedButton, EnhancedStatusCard, ThemeToggleButton,
+    NetworkQualityWidget
+)
 
 
-class ModernButton(QPushButton):
-    """Apple HIG-compliant modern button with rounded corners."""
-
-    def __init__(self, text: str, button_type: str = "primary"):
-        super().__init__(text)
-        self.button_type = button_type
-        self._setup_style()
-
-    def _setup_style(self):
-        """Setup Apple HIG button styling."""
-        if self.button_type == "primary":
-            style = """
-                QPushButton {
-                    background-color: #007AFF;
-                    border: none;
-                    border-radius: 8px;
-                    color: white;
-                    font-weight: 600;
-                    font-size: 13px;
-                    padding: 8px 16px;
-                    min-width: 120px;
-                }
-                QPushButton:hover {
-                    background-color: #0056CC;
-                }
-                QPushButton:pressed {
-                    background-color: #004499;
-                }
-                QPushButton:disabled {
-                    background-color: #E5E5EA;
-                    color: #8E8E93;
-                }
-            """
-        elif self.button_type == "secondary":
-            style = """
-                QPushButton {
-                    background-color: #F2F2F7;
-                    border: 1px solid #D1D1D6;
-                    border-radius: 8px;
-                    color: #007AFF;
-                    font-weight: 600;
-                    font-size: 13px;
-                    padding: 8px 16px;
-                    min-width: 120px;
-                }
-                QPushButton:hover {
-                    background-color: #E5E5EA;
-                }
-                QPushButton:pressed {
-                    background-color: #D1D1D6;
-                }
-            """
-        else:  # destructive
-            style = """
-                QPushButton {
-                    background-color: #FF3B30;
-                    border: none;
-                    border-radius: 8px;
-                    color: white;
-                    font-weight: 600;
-                    font-size: 13px;
-                    padding: 8px 16px;
-                    min-width: 120px;
-                }
-                QPushButton:hover {
-                    background-color: #D70015;
-                }
-                QPushButton:pressed {
-                    background-color: #A20000;
-                }
-            """
-        self.setStyleSheet(style)
+# Legacy ModernButton class - kept for backward compatibility
+class ModernButton(AnimatedButton):
+    """Apple HIG-compliant modern button with animations - enhanced version."""
+    pass
 
 
-class StatusCard(QFrame):
-    """Apple HIG-compliant status card widget."""
-
-    def __init__(self, title: str, status: str = "Not Connected"):
-        super().__init__()
-        self.title = title
-        self.status = status
-        self._setup_ui()
-        self._setup_style()
-
-    def _setup_ui(self):
-        """Setup the card UI."""
-        layout = QVBoxLayout()
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(4)
-
-        # Title
-        title_label = QLabel(self.title)
-        title_font = QFont()
-        title_font.setPointSize(13)
-        title_font.setWeight(QFont.Weight.DemiBold)
-        title_label.setFont(title_font)
-        title_label.setStyleSheet("color: #1D1D1F;")
-
-        # Status
-        self.status_label = QLabel(self.status)
-        status_font = QFont()
-        status_font.setPointSize(11)
-        self.status_label.setFont(status_font)
-        self.status_label.setStyleSheet("color: #8E8E93;")
-
-        layout.addWidget(title_label)
-        layout.addWidget(self.status_label)
-        self.setLayout(layout)
-
-    def _setup_style(self):
-        """Setup Apple HIG card styling."""
-        self.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border-radius: 12px;
-                border: 1px solid #E5E5EA;
-            }
-        """)
-        self.setFixedHeight(80)
-
+# Legacy StatusCard class - kept for backward compatibility
+class StatusCard(EnhancedStatusCard):
+    """Apple HIG-compliant status card widget - enhanced version."""
+    
     def update_status(self, status: str, color: str = "#8E8E93"):
-        """Update the status text and color."""
-        self.status_label.setText(status)
-        self.status_label.setStyleSheet(f"color: {color};")
+        """Update the status text and color (legacy method)."""
+        # Map old color values to new status types
+        if color == "#34C759":
+            status_type = "success"
+        elif color == "#FF9F0A":
+            status_type = "warning"
+        elif color == "#FF3B30":
+            status_type = "error"
+        elif color == "#007AFF":
+            status_type = "info"
+        else:
+            status_type = "info"
+        
+        super().update_status(status, status_type)
 
 
 class MainWindow(QMainWindow):
@@ -167,12 +73,15 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._setup_tray()
         self._setup_style()
+        
+        # Connect to theme changes
+        theme_manager.theme_changed.connect(self._setup_style)
 
     def _setup_ui(self):
         """Setup the main user interface."""
         self.setWindowTitle("Input Link")
-        self.setMinimumSize(400, 600)
-        self.resize(480, 650)
+        self.setMinimumSize(520, 700)
+        self.resize(600, 750)
 
         # Central widget
         central_widget = QWidget()
@@ -180,12 +89,15 @@ class MainWindow(QMainWindow):
 
         # Main layout
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(24, 20, 24, 20)
-        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(20, 16, 20, 16)  # Reduced margins
+        main_layout.setSpacing(16)  # Reduced spacing from 20 to 16
         central_widget.setLayout(main_layout)
 
-        # Header
+        # Header with theme toggle
         self._create_header(main_layout)
+        
+        # Network quality indicator
+        self._create_network_section(main_layout)
 
         # Status cards
         self._create_status_section(main_layout)
@@ -203,7 +115,10 @@ class MainWindow(QMainWindow):
         main_layout.addStretch()
 
     def _create_header(self, layout: QVBoxLayout):
-        """Create the header section."""
+        """Create the header section with theme toggle."""
+        header_container = QHBoxLayout()
+        
+        # Left side - title and subtitle
         header_layout = QVBoxLayout()
         header_layout.setSpacing(4)
 
@@ -213,7 +128,7 @@ class MainWindow(QMainWindow):
         title_font.setPointSize(24)
         title_font.setWeight(QFont.Weight.Bold)
         title_label.setFont(title_font)
-        title_label.setStyleSheet("color: #1D1D1F;")
+        title_label.setStyleSheet(f"color: {theme_manager.get_color('text_primary')};")
         title_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         # Subtitle
@@ -221,12 +136,25 @@ class MainWindow(QMainWindow):
         subtitle_font = QFont()
         subtitle_font.setPointSize(13)
         subtitle_label.setFont(subtitle_font)
-        subtitle_label.setStyleSheet("color: #8E8E93;")
+        subtitle_label.setStyleSheet(f"color: {theme_manager.get_color('text_secondary')};")
         subtitle_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         header_layout.addWidget(title_label)
         header_layout.addWidget(subtitle_label)
-        layout.addLayout(header_layout)
+        
+        # Right side - theme toggle
+        theme_toggle = ThemeToggleButton()
+        
+        header_container.addLayout(header_layout)
+        header_container.addStretch()
+        header_container.addWidget(theme_toggle, 0, Qt.AlignmentFlag.AlignTop)
+        
+        layout.addLayout(header_container)
+    
+    def _create_network_section(self, layout: QVBoxLayout):
+        """Create network quality section."""
+        self.network_quality = NetworkQualityWidget()
+        layout.addWidget(self.network_quality)
 
     def _create_status_section(self, layout: QVBoxLayout):
         """Create status cards section."""
@@ -247,23 +175,7 @@ class MainWindow(QMainWindow):
     def _create_control_section(self, layout: QVBoxLayout):
         """Create control buttons section."""
         control_group = QGroupBox("Control")
-        control_group.setStyleSheet("""
-            QGroupBox {
-                font-size: 13px;
-                font-weight: 600;
-                color: #1D1D1F;
-                border: 1px solid #E5E5EA;
-                border-radius: 12px;
-                margin: 8px 0;
-                padding-top: 8px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 12px;
-                padding: 0 8px 0 8px;
-                background-color: #F2F2F7;
-            }
-        """)
+        control_group.setStyleSheet(theme_manager.get_group_style())
 
         control_layout = QVBoxLayout()
         control_layout.setContentsMargins(16, 16, 16, 16)
@@ -271,16 +183,16 @@ class MainWindow(QMainWindow):
 
         # Button row 1
         button_row1 = QHBoxLayout()
-        self.start_sender_btn = ModernButton("Start Sender", "primary")
-        self.start_receiver_btn = ModernButton("Start Receiver", "primary")
+        self.start_sender_btn = AnimatedButton("Start Sender", "primary")
+        self.start_receiver_btn = AnimatedButton("Start Receiver", "primary")
 
         button_row1.addWidget(self.start_sender_btn)
         button_row1.addWidget(self.start_receiver_btn)
 
         # Button row 2
         button_row2 = QHBoxLayout()
-        self.stop_btn = ModernButton("Stop All", "destructive")
-        self.config_btn = ModernButton("Settings", "secondary")
+        self.stop_btn = AnimatedButton("Stop All", "destructive")
+        self.config_btn = AnimatedButton("Settings", "secondary")
 
         button_row2.addWidget(self.stop_btn)
         button_row2.addWidget(self.config_btn)
@@ -300,23 +212,7 @@ class MainWindow(QMainWindow):
     def _create_config_section(self, layout: QVBoxLayout):
         """Create configuration display section."""
         config_group = QGroupBox("Connection Settings")
-        config_group.setStyleSheet("""
-            QGroupBox {
-                font-size: 13px;
-                font-weight: 600;
-                color: #1D1D1F;
-                border: 1px solid #E5E5EA;
-                border-radius: 12px;
-                margin: 8px 0;
-                padding-top: 8px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 12px;
-                padding: 0 8px 0 8px;
-                background-color: #F2F2F7;
-            }
-        """)
+        config_group.setStyleSheet(theme_manager.get_group_style())
 
         config_layout = QGridLayout()
         config_layout.setContentsMargins(16, 16, 16, 16)
@@ -325,14 +221,14 @@ class MainWindow(QMainWindow):
 
         # Host/Port display
         host_label = QLabel("Host:")
-        host_label.setStyleSheet("color: #8E8E93; font-size: 11px;")
+        host_label.setStyleSheet(f"color: {theme_manager.get_color('text_secondary')}; font-size: 11px;")
         self.host_value = QLabel("127.0.0.1")
-        self.host_value.setStyleSheet("color: #1D1D1F; font-size: 11px;")
+        self.host_value.setStyleSheet(f"color: {theme_manager.get_color('text_primary')}; font-size: 11px;")
 
         port_label = QLabel("Port:")
-        port_label.setStyleSheet("color: #8E8E93; font-size: 11px;")
+        port_label.setStyleSheet(f"color: {theme_manager.get_color('text_secondary')}; font-size: 11px;")
         self.port_value = QLabel("8765")
-        self.port_value.setStyleSheet("color: #1D1D1F; font-size: 11px;")
+        self.port_value.setStyleSheet(f"color: {theme_manager.get_color('text_primary')}; font-size: 11px;")
 
         config_layout.addWidget(host_label, 0, 0)
         config_layout.addWidget(self.host_value, 0, 1)
@@ -345,40 +241,24 @@ class MainWindow(QMainWindow):
     def _create_log_section(self, layout: QVBoxLayout):
         """Create log display section."""
         log_group = QGroupBox("Activity Log")
-        log_group.setStyleSheet("""
-            QGroupBox {
-                font-size: 13px;
-                font-weight: 600;
-                color: #1D1D1F;
-                border: 1px solid #E5E5EA;
-                border-radius: 12px;
-                margin: 8px 0;
-                padding-top: 8px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 12px;
-                padding: 0 8px 0 8px;
-                background-color: #F2F2F7;
-            }
-        """)
+        log_group.setStyleSheet(theme_manager.get_group_style())
 
         log_layout = QVBoxLayout()
         log_layout.setContentsMargins(16, 16, 16, 16)
 
         self.log_display = QTextEdit()
-        self.log_display.setMaximumHeight(150)
+        self.log_display.setMaximumHeight(100)  # Reduced from 150 to 100
         self.log_display.setReadOnly(True)
-        self.log_display.setStyleSheet("""
-            QTextEdit {
-                background-color: #F2F2F7;
-                border: 1px solid #D1D1D6;
+        self.log_display.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {theme_manager.get_color('input_bg')};
+                border: 1px solid {theme_manager.get_color('border_secondary')};
                 border-radius: 8px;
                 padding: 8px;
                 font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
                 font-size: 10px;
-                color: #1D1D1F;
-            }
+                color: {theme_manager.get_color('text_primary')};
+            }}
         """)
 
         log_layout.addWidget(self.log_display)
@@ -411,15 +291,8 @@ class MainWindow(QMainWindow):
             self.tray_icon.show()
 
     def _setup_style(self):
-        """Setup global application styling."""
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #F2F2F7;
-            }
-            QWidget {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            }
-        """)
+        """Setup global application styling with theme support."""
+        self.setStyleSheet(theme_manager.get_window_style())
 
     def _show_settings(self):
         """Show settings dialog."""
@@ -462,3 +335,7 @@ class MainWindow(QMainWindow):
             self.port_value.setText(str(config.sender_config.receiver_port))
         elif hasattr(config, "receiver_config"):
             self.port_value.setText(str(config.receiver_config.listen_port))
+    
+    def update_network_quality(self, status: str, latency: int = 0, signal_strength: int = 0, packet_loss: float = 0.0):
+        """Update network quality indicators."""
+        self.network_quality.update_metrics(status, latency, signal_strength, packet_loss)

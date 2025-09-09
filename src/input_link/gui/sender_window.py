@@ -22,146 +22,12 @@ from PySide6.QtWidgets import (
 
 from input_link.core.controller_manager import DetectedController
 from input_link.gui.main_window import ModernButton, StatusCard
+from input_link.gui.theme_manager import theme_manager
+from input_link.gui.enhanced_widgets import (
+    AnimatedButton, EnhancedStatusCard, ControllerVisualization,
+    NetworkQualityWidget, ModernCardScrollArea, EnhancedControllerCard
+)
 
-
-class ControllerCard(QFrame):
-    """Apple HIG-compliant controller status card."""
-
-    controller_toggled = Signal(str, bool)  # controller_id, enabled
-    controller_number_changed = Signal(str, int)  # controller_id, player number
-
-    def __init__(self, controller: DetectedController):
-        super().__init__()
-        self.controller = controller
-        self.is_enabled = False
-        self._setup_ui()
-        self._setup_style()
-
-    def _setup_ui(self):
-        """Setup the controller card UI."""
-        layout = QVBoxLayout()
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(6)
-
-        # Header with controller name and toggle
-        header_layout = QHBoxLayout()
-
-        # Controller info
-        info_layout = QVBoxLayout()
-        info_layout.setSpacing(2)
-
-        # Controller name
-        name_label = QLabel(self.controller.name)
-        name_font = QFont()
-        name_font.setPointSize(12)
-        name_font.setWeight(QFont.Weight.DemiBold)
-        name_label.setFont(name_font)
-        name_label.setStyleSheet("color: #1D1D1F;")
-
-        # Controller details
-        player_num = getattr(self.controller, 'assigned_number', 1) or 1
-        input_method = getattr(self.controller, 'preferred_input_method', 'XINPUT')
-        details = f"Player {player_num} • {input_method.value if hasattr(input_method, 'value') else input_method}"
-        details_label = QLabel(details)
-        details_font = QFont()
-        details_font.setPointSize(10)
-        details_label.setFont(details_font)
-        details_label.setStyleSheet("color: #8E8E93;")
-
-        info_layout.addWidget(name_label)
-        info_layout.addWidget(details_label)
-
-        # Enable toggle
-        self.enable_checkbox = QCheckBox()
-        self.enable_checkbox.setStyleSheet("""
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border-radius: 9px;
-                border: 2px solid #D1D1D6;
-                background-color: white;
-            }
-            QCheckBox::indicator:checked {
-                border-color: #007AFF;
-                background-color: #007AFF;
-                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIHZpZXdCb3g9IjAgMCAxMCAxMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMi41TDQgNi41TDIgNC41IiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPgo=);
-            }
-        """)
-        self.enable_checkbox.toggled.connect(self._on_toggle)
-
-        header_layout.addLayout(info_layout)
-        header_layout.addStretch()
-        header_layout.addWidget(self.enable_checkbox)
-
-        # Connection status
-        self.status_label = QLabel("Ready")
-        status_font = QFont()
-        status_font.setPointSize(10)
-        self.status_label.setFont(status_font)
-        self.status_label.setStyleSheet("color: #34C759;")
-
-        layout.addLayout(header_layout)
-        layout.addWidget(self.status_label)
-
-        # Player number selector
-        num_layout = QHBoxLayout()
-        num_layout.setSpacing(6)
-        num_label = QLabel("Player #:")
-        num_label.setStyleSheet("color: #1D1D1F; font-size: 11px;")
-        self.player_spin = QSpinBox()
-        self.player_spin.setRange(1, 128)
-        self.player_spin.setValue(getattr(self.controller, 'assigned_number', 1) or 1)
-        self.player_spin.setFixedWidth(80)
-        self.player_spin.setStyleSheet(
-            "QSpinBox { background-color: white; border: 1px solid #D1D1D6;"
-            " border-radius: 6px; padding: 4px 6px; font-size: 12px; color: #1D1D1F; }"
-        )
-        self.player_spin.valueChanged.connect(self._on_number_changed)
-        num_layout.addWidget(num_label)
-        num_layout.addWidget(self.player_spin)
-        num_layout.addStretch()
-        layout.addLayout(num_layout)
-        self.setLayout(layout)
-
-    def _setup_style(self):
-        """Setup Apple HIG card styling."""
-        self.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border-radius: 12px;
-                border: 1px solid #E5E5EA;
-            }
-            QFrame:hover {
-                border-color: #D1D1D6;
-            }
-        """)
-        self.setFixedHeight(85)
-
-    def _on_toggle(self, checked: bool):
-        """Handle controller enable/disable toggle."""
-        self.is_enabled = checked
-        controller_id = getattr(self.controller, 'identifier', f'{self.controller.guid}_{self.controller.device_id}')
-        self.controller_toggled.emit(controller_id, checked)
-
-        # Update status based on toggle
-        if checked:
-            self.status_label.setText("Active")
-            self.status_label.setStyleSheet("color: #34C759;")
-        else:
-            self.status_label.setText("Disabled")
-            self.status_label.setStyleSheet("color: #8E8E93;")
-        # Enable/disable number selector accordingly
-        self.player_spin.setEnabled(checked)
-
-    def update_status(self, status: str, color: str = "#8E8E93"):
-        """Update controller status."""
-        self.status_label.setText(status)
-        self.status_label.setStyleSheet(f"color: {color};")
-
-    def _on_number_changed(self, value: int):
-        """Handle player number change."""
-        controller_id = getattr(self.controller, 'identifier', f'{self.controller.guid}_{self.controller.device_id}')
-        self.controller_number_changed.emit(controller_id, value)
 
 
 class SenderWindow(QMainWindow):
@@ -176,15 +42,18 @@ class SenderWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.is_capturing = False
-        self.controller_cards: List[ControllerCard] = []
+        self.controller_cards: List[EnhancedControllerCard] = []
         self._setup_ui()
         self._setup_style()
+        
+        # Connect to theme changes
+        theme_manager.theme_changed.connect(self._setup_style)
 
     def _setup_ui(self):
         """Setup the sender window UI."""
         self.setWindowTitle("Input Link - Sender")
-        self.setMinimumSize(450, 650)
-        self.resize(480, 700)
+        self.setMinimumSize(550, 750)
+        self.resize(620, 800)
 
         # Central widget
         central_widget = QWidget()
@@ -192,8 +61,8 @@ class SenderWindow(QMainWindow):
 
         # Main layout
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(24, 20, 24, 20)
-        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(20, 16, 20, 16)  # Reduced margins
+        main_layout.setSpacing(16)  # Reduced spacing from 20 to 16
         central_widget.setLayout(main_layout)
 
         # Header
@@ -255,7 +124,7 @@ class SenderWindow(QMainWindow):
         # Detection controls
         detection_layout = QHBoxLayout()
 
-        self.scan_btn = ModernButton("Scan Controllers", "secondary")
+        self.scan_btn = AnimatedButton("Scan Controllers", "secondary")
         self.scan_btn.clicked.connect(self._scan_controllers)
 
         self.controller_count_label = QLabel("0 controllers detected")
@@ -265,24 +134,15 @@ class SenderWindow(QMainWindow):
         detection_layout.addStretch()
         detection_layout.addWidget(self.controller_count_label)
 
-        # Controller list area
-        self.controller_scroll_area = QWidget()
-        self.controller_scroll_layout = QVBoxLayout()
-        self.controller_scroll_layout.setSpacing(8)
-        self.controller_scroll_area.setLayout(self.controller_scroll_layout)
-
-        # No controllers message
-        self.no_controllers_label = QLabel("No controllers detected\nConnect a controller and click 'Scan Controllers'")
-        self.no_controllers_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.no_controllers_label.setStyleSheet("""
-            color: #8E8E93;
-            font-size: 12px;
-            padding: 20px;
-            border: 2px dashed #D1D1D6;
-            border-radius: 8px;
-            background-color: #F9F9F9;
-        """)
-        self.controller_scroll_layout.addWidget(self.no_controllers_label)
+        # Controller list area with modern scroll
+        self.controller_scroll_area = ModernCardScrollArea()
+        self.controller_scroll_area.set_max_height(380)  # Increased from 300 to 380
+        
+        # Set empty message for when no controllers are detected
+        self.controller_scroll_area.set_empty_message(
+            "No controllers detected\nConnect a controller and click 'Scan Controllers'"
+        )
+        self.controller_scroll_area.show_empty_message(True)
 
         controller_layout.addLayout(detection_layout)
         controller_layout.addWidget(self.controller_scroll_area)
@@ -344,10 +204,10 @@ class SenderWindow(QMainWindow):
         """Create control buttons."""
         button_layout = QHBoxLayout()
 
-        self.start_btn = ModernButton("Start Capturing", "primary")
+        self.start_btn = AnimatedButton("Start Capturing", "primary")
         self.start_btn.clicked.connect(self._toggle_capture)
 
-        self.back_btn = ModernButton("Back to Main", "secondary")
+        self.back_btn = AnimatedButton("Back to Main", "secondary")
 
         button_layout.addWidget(self.start_btn)
         button_layout.addWidget(self.back_btn)
@@ -376,29 +236,70 @@ class SenderWindow(QMainWindow):
             self.start_btn._setup_style()
             self.is_capturing = True
 
+    def _sort_controllers_for_display(self, controllers: List[DetectedController]) -> List[DetectedController]:
+        """Sort controllers in optimal display order."""
+        def controller_priority(controller):
+            """Calculate priority score for controller display order."""
+            score = 0
+            
+            # Priority 1: Already assigned/enabled controllers first
+            if getattr(controller, 'assigned_number', None):
+                score += 1000
+            
+            # Priority 2: Xbox controllers (typically most compatible)
+            name_lower = controller.name.lower()
+            if 'xbox' in name_lower or 'xinput' in name_lower:
+                score += 500
+                
+            # Priority 3: PlayStation controllers
+            elif 'playstation' in name_lower or 'dualshock' in name_lower or 'dualsense' in name_lower:
+                score += 400
+                
+            # Priority 4: Generic/DirectInput controllers
+            elif 'controller' in name_lower or 'gamepad' in name_lower:
+                score += 300
+                
+            # Priority 5: Other input devices (keyboards, mice, etc.)
+            else:
+                score += 100
+            
+            # Sub-priority: Prefer lower device IDs (typically connected first)
+            score += (1000 - controller.device_id) if controller.device_id < 1000 else 0
+            
+            # Sub-priority: Prefer XINPUT over DirectInput
+            input_method = getattr(controller, 'preferred_input_method', 'XINPUT')
+            if input_method == 'XINPUT' or (hasattr(input_method, 'value') and input_method.value == 'XINPUT'):
+                score += 50
+            
+            return score
+        
+        # Sort by priority score (highest first)
+        return sorted(controllers, key=controller_priority, reverse=True)
+
     def update_controllers(self, controllers: List[DetectedController]):
-        """Update the controller list."""
+        """Update the controller list with optimized display order."""
         # Clear existing cards
-        for card in self.controller_cards:
-            self.controller_scroll_layout.removeWidget(card)
-            card.deleteLater()
+        self.controller_scroll_area.clear_cards()
         self.controller_cards.clear()
 
-        # Remove no controllers message
-        self.no_controllers_label.hide()
-
         if not controllers:
-            self.no_controllers_label.show()
+            self.controller_scroll_area.show_empty_message(True)
             self.controller_count_label.setText("0 controllers detected")
             return
 
-        # Add new controller cards
-        for controller in controllers:
-            card = ControllerCard(controller)
+        # Hide empty message
+        self.controller_scroll_area.show_empty_message(False)
+
+        # Sort controllers for optimal display order
+        sorted_controllers = self._sort_controllers_for_display(controllers)
+        
+        # Add new controller cards in optimal order
+        for controller in sorted_controllers:
+            card = EnhancedControllerCard(controller)
             card.controller_toggled.connect(self.controller_enabled.emit)
             card.controller_number_changed.connect(self._on_controller_number_changed)
             self.controller_cards.append(card)
-            self.controller_scroll_layout.addWidget(card)
+            self.controller_scroll_area.add_card(card)
 
         # Update count
         count = len(controllers)
@@ -427,60 +328,12 @@ class SenderWindow(QMainWindow):
 
     def _get_group_style(self) -> str:
         """Get consistent group box styling."""
-        return """
-            QGroupBox {
-                font-size: 13px;
-                font-weight: 600;
-                color: #1D1D1F;
-                border: 1px solid #E5E5EA;
-                border-radius: 12px;
-                margin: 8px 0;
-                padding-top: 8px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 12px;
-                padding: 0 8px 0 8px;
-                background-color: #F2F2F7;
-            }
-        """
+        return theme_manager.get_group_style()
 
     def _get_input_style(self) -> str:
         """Get consistent input field styling."""
-        return """
-            QComboBox, QSpinBox {
-                background-color: white;
-                border: 1px solid #D1D1D6;
-                border-radius: 6px;
-                padding: 6px 8px;
-                font-size: 12px;
-                color: #1D1D1F;
-                min-height: 20px;
-            }
-            QComboBox:focus, QSpinBox:focus {
-                border-color: #007AFF;
-                outline: none;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 4px solid #8E8E93;
-                margin-right: 8px;
-            }
-        """
+        return theme_manager.get_input_style()
 
     def _setup_style(self):
         """Setup window styling."""
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #F2F2F7;
-            }
-            QWidget {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            }
-        """)
+        self.setStyleSheet(theme_manager.get_window_style())
