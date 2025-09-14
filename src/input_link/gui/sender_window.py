@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import List
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -36,8 +36,8 @@ class SenderWindow(QMainWindow):
     # Signals
     start_capture = Signal()
     stop_capture = Signal()
-    controller_enabled = Signal(str, bool)
     settings_changed = Signal(dict)
+    scan_controllers_requested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -48,6 +48,21 @@ class SenderWindow(QMainWindow):
         
         # Connect to theme changes
         theme_manager.theme_changed.connect(self._setup_style)
+        
+        # Setup auto-scan timer
+        self._auto_scan_timer = QTimer()
+        self._auto_scan_timer.setSingleShot(True)
+        self._auto_scan_timer.timeout.connect(self._perform_auto_scan)
+
+    def showEvent(self, event):
+        """Handle window show event and trigger auto-scan."""
+        super().showEvent(event)
+        # Trigger auto-scan after a short delay to ensure window is fully loaded
+        self._auto_scan_timer.start(500)  # 500ms delay
+        
+    def _perform_auto_scan(self):
+        """Perform automatic controller scan when window opens."""
+        self._scan_controllers()
 
     def _setup_ui(self):
         """Setup the sender window UI."""
@@ -136,7 +151,7 @@ class SenderWindow(QMainWindow):
 
         # Controller list area with modern scroll
         self.controller_scroll_area = ModernCardScrollArea()
-        self.controller_scroll_area.set_max_height(380)  # Increased from 300 to 380
+        self.controller_scroll_area.set_max_height(240)  # Optimized for 56px card height
         
         # Set empty message for when no controllers are detected
         self.controller_scroll_area.set_empty_message(
@@ -217,9 +232,19 @@ class SenderWindow(QMainWindow):
     def _scan_controllers(self):
         """Handle controller scanning."""
         # Emit signal to trigger controller scan
-        # This will be connected to the actual controller manager
-        # For now, we'll add a placeholder message
-        print("Scan Controllers button clicked")
+        self.scan_controllers_requested.emit()
+        
+        # Update button state to show scanning
+        self.scan_btn.setText("Scanning...")
+        self.scan_btn.setEnabled(False)
+        
+        # Re-enable button after a short delay (will be properly handled by the app)
+        QTimer.singleShot(1500, self._reset_scan_button)
+    
+    def _reset_scan_button(self):
+        """Reset scan button to normal state."""
+        self.scan_btn.setText("Scan Controllers") 
+        self.scan_btn.setEnabled(True)
 
     def _toggle_capture(self):
         """Toggle capture on/off."""
@@ -296,7 +321,6 @@ class SenderWindow(QMainWindow):
         # Add new controller cards in optimal order
         for controller in sorted_controllers:
             card = EnhancedControllerCard(controller)
-            card.controller_toggled.connect(self.controller_enabled.emit)
             card.controller_number_changed.connect(self._on_controller_number_changed)
             self.controller_cards.append(card)
             self.controller_scroll_area.add_card(card)

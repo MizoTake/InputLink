@@ -624,7 +624,7 @@ class ModernCardScrollArea(EnhancedScrollArea):
         super().__init__(parent)
         self.cards_widget = QWidget()
         self.cards_layout = QVBoxLayout()
-        self.cards_layout.setSpacing(8)
+        self.cards_layout.setSpacing(4)  # Reduced spacing for compact cards
         self.cards_layout.setContentsMargins(0, 0, 0, 0)
         
         # Add stretch to push cards to top
@@ -684,15 +684,13 @@ class ModernCardScrollArea(EnhancedScrollArea):
 
 
 class EnhancedControllerCard(QFrame):
-    """Enhanced controller card with better visual design and icons."""
+    """Enhanced controller card with clean vertical layout design."""
     
-    controller_toggled = Signal(str, bool)  # controller_id, enabled
     controller_number_changed = Signal(str, int)  # controller_id, player number
     
     def __init__(self, controller):
         super().__init__()
         self.controller = controller
-        self.is_enabled = False
         self._setup_ui()
         self._setup_style()
         
@@ -700,241 +698,253 @@ class EnhancedControllerCard(QFrame):
         theme_manager.theme_changed.connect(self._setup_style)
     
     def _setup_ui(self):
-        """Setup enhanced controller card UI with optimized element sizes."""
-        layout = QVBoxLayout()
-        layout.setContentsMargins(14, 10, 14, 10)  # Reduced margins
-        layout.setSpacing(6)  # Reduced spacing
+        """Setup Windows-standard controller card UI with horizontal layout."""
+        main_layout = QHBoxLayout()
+        main_layout.setContentsMargins(16, 8, 16, 8)  # Windows-standard margins
+        main_layout.setSpacing(12)  # Standard spacing
         
-        # Header with controller icon, name and toggle
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(10)  # Reduced spacing
+        # Left section: Controller info (horizontal layout)
+        left_section = QHBoxLayout()
+        left_section.setSpacing(8)
         
-        # Controller icon - smaller
+        # Controller icon (non-interactive, smaller)
         self.controller_icon = QLabel("🎮")
+        self.controller_icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.controller_icon.setStyleSheet(f"""
             QLabel {{
-                font-size: 18px;
+                font-size: 16px;
                 color: {theme_manager.get_color('gaming_blue')};
-                min-width: 20px;
-                max-width: 20px;
+                min-width: 18px;
+                max-width: 18px;
             }}
         """)
         
-        # Controller info section
-        info_layout = QVBoxLayout()
-        info_layout.setSpacing(2)  # Tighter spacing
+        # Controller info container
+        info_container = QVBoxLayout()
+        info_container.setSpacing(2)
         
-        # Controller name - slightly smaller
+        # Controller name (non-interactive, smaller)
         name_label = QLabel(self.controller.name)
+        name_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         name_font = QFont()
-        name_font.setPointSize(12)  # Reduced from 13
+        name_font.setPointSize(11)
         name_font.setWeight(QFont.Weight.DemiBold)
         name_label.setFont(name_font)
         name_label.setStyleSheet(f"color: {theme_manager.get_color('text_primary')};")
         
-        # Status and details in one line with compact formatting
-        player_num = getattr(self.controller, 'assigned_number', 1) or 1
+        # Input method badge (smaller, inline)
         input_method = getattr(self.controller, 'preferred_input_method', 'XINPUT')
         method_display = input_method.value if hasattr(input_method, 'value') else input_method
         
-        details_layout = QHBoxLayout()
-        details_layout.setSpacing(6)  # Reduced spacing
-        
-        # Player number badge - more compact
-        self.player_badge = QLabel(f"P{player_num}")
-        self.player_badge.setStyleSheet(f"""
-            QLabel {{
-                background-color: {theme_manager.get_color('primary')};
-                color: {theme_manager.get_color('text_inverse')};
-                border-radius: 8px;
-                padding: 1px 6px;
-                font-size: 9px;
-                font-weight: bold;
-                min-width: 16px;
-            }}
-        """)
-        
-        # Input method - more compact
         method_label = QLabel(method_display)
+        method_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         method_label.setStyleSheet(f"""
             QLabel {{
                 color: {theme_manager.get_color('text_secondary')};
-                font-size: 10px;
+                font-size: 9px;
                 background-color: {theme_manager.get_color('secondary')};
                 border-radius: 4px;
                 padding: 1px 4px;
+                font-weight: 500;
             }}
         """)
         
-        # Status indicator with icon - inline
-        self.status_icon = QLabel("●")
-        self.status_icon.setStyleSheet(f"color: {theme_manager.get_color('success')}; font-size: 10px;")
+        info_container.addWidget(name_label)
+        info_container.addWidget(method_label)
         
-        self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet(f"""
-            color: {theme_manager.get_color('success')};
-            font-size: 10px;
-            font-weight: 600;
-        """)
+        left_section.addWidget(self.controller_icon)
+        left_section.addLayout(info_container)
+        left_section.addStretch()  # Push everything to the left
         
-        details_layout.addWidget(self.player_badge)
-        details_layout.addWidget(method_label)
-        details_layout.addWidget(self.status_icon)
-        details_layout.addWidget(self.status_label)
-        details_layout.addStretch()
+        # Right section: Player number controls (Windows-standard horizontal layout)
+        right_section = QHBoxLayout()
+        right_section.setSpacing(4)
+        right_section.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        info_layout.addWidget(name_label)
-        info_layout.addLayout(details_layout)
-        
-        # Enable toggle - smaller
-        self.enable_checkbox = QCheckBox()
-        self.enable_checkbox.setStyleSheet(f"""
-            QCheckBox::indicator {{
-                width: 16px;
-                height: 16px;
-                border-radius: 8px;
-                border: 2px solid {theme_manager.get_color('border_secondary')};
-                background-color: {theme_manager.get_color('card_bg')};
-            }}
-            QCheckBox::indicator:checked {{
-                border-color: {theme_manager.get_color('primary')};
-                background-color: {theme_manager.get_color('primary')};
-            }}
-        """)
-        self.enable_checkbox.toggled.connect(self._on_toggle)
-        
-        # Settings section (player number) - inline and compact
-        self.settings_container = QWidget()
-        self.settings_layout = QHBoxLayout()
-        self.settings_layout.setContentsMargins(0, 0, 0, 0)
-        self.settings_layout.setSpacing(6)
-        
-        settings_label = QLabel("Player:")
-        settings_label.setStyleSheet(f"color: {theme_manager.get_color('text_secondary')}; font-size: 10px;")
-        
-        self.player_spin = QSpinBox()
-        self.player_spin.setRange(1, 128)
-        self.player_spin.setValue(getattr(self.controller, 'assigned_number', 1) or 1)
-        self.player_spin.setFixedSize(50, 22)  # Smaller size
-        self.player_spin.setStyleSheet(f"""
-            QSpinBox {{
-                background-color: {theme_manager.get_color('input_bg')};
-                border: 1px solid {theme_manager.get_color('border_secondary')};
-                border-radius: 4px;
-                padding: 2px 4px;
+        # Player label (compact)
+        player_label = QLabel("Player:")
+        player_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        player_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme_manager.get_color('text_secondary')};
                 font-size: 10px;
-                color: {theme_manager.get_color('text_primary')};
-            }}
-            QSpinBox:focus {{
-                border-color: {theme_manager.get_color('primary')};
+                font-weight: 500;
             }}
         """)
-        self.player_spin.valueChanged.connect(self._on_controller_number_changed)
         
-        self.settings_layout.addWidget(settings_label)
-        self.settings_layout.addWidget(self.player_spin)
-        self.settings_layout.addStretch()
-        self.settings_container.setLayout(self.settings_layout)
+        # Decrease button
+        player_num = getattr(self.controller, 'assigned_number', 1) or 1
+        self.decrease_button = QPushButton("−")
+        self.decrease_button.setFixedSize(24, 24)
         
-        # Assemble header
-        header_layout.addWidget(self.controller_icon)
-        header_layout.addLayout(info_layout, 1)
-        header_layout.addWidget(self.enable_checkbox)
+        # Player number display (compact)
+        self.player_display = QLabel(str(player_num))
+        self.player_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.player_display.setFixedSize(32, 24)
+        self.player_display.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         
-        # Add to main layout
-        layout.addLayout(header_layout)
-        layout.addWidget(self.settings_container)
+        # Increase button
+        self.increase_button = QPushButton("＋")
+        self.increase_button.setFixedSize(24, 24)
         
-        self.setLayout(layout)
+        # Apply Windows-standard button styling
+        player_colors = self._get_player_colors(player_num)
+        self._update_player_controls_styling(player_colors)
+        
+        self.decrease_button.clicked.connect(self._decrement_player)
+        self.increase_button.clicked.connect(self._increment_player)
+        
+        # Store current player number
+        self.current_player_num = player_num
+        
+        right_section.addWidget(player_label)
+        right_section.addWidget(self.decrease_button)
+        right_section.addWidget(self.player_display)
+        right_section.addWidget(self.increase_button)
+        
+        # Add sections to main layout
+        main_layout.addLayout(left_section, 1)
+        main_layout.addLayout(right_section, 0)
+        
+        self.setLayout(main_layout)
+    
+    def _get_player_colors(self, player_num: int) -> dict:
+        """Get color scheme based on player number."""
+        # Define color schemes for different player numbers
+        color_schemes = [
+            # Player 1 - Blue scheme
+            {
+                'bg_light': '#E3F2FD', 'bg_dark': '#BBDEFB',
+                'bg_hover_light': '#F3F8FF', 'bg_hover_dark': '#E3F2FD',
+                'border': '#2196F3', 'border_hover': '#1976D2',
+                'text': '#0D47A1', 'button_bg': '#E3F2FD', 'button_hover': '#BBDEFB',
+                'arrow': '#1976D2'
+            },
+            # Player 2 - Red scheme  
+            {
+                'bg_light': '#FFEBEE', 'bg_dark': '#FFCDD2',
+                'bg_hover_light': '#FFF5F5', 'bg_hover_dark': '#FFEBEE',
+                'border': '#F44336', 'border_hover': '#D32F2F',
+                'text': '#B71C1C', 'button_bg': '#FFEBEE', 'button_hover': '#FFCDD2',
+                'arrow': '#D32F2F'
+            },
+            # Player 3 - Green scheme
+            {
+                'bg_light': '#E8F5E8', 'bg_dark': '#C8E6C9',
+                'bg_hover_light': '#F1F8F1', 'bg_hover_dark': '#E8F5E8',
+                'border': '#4CAF50', 'border_hover': '#388E3C',
+                'text': '#1B5E20', 'button_bg': '#E8F5E8', 'button_hover': '#C8E6C9',
+                'arrow': '#388E3C'
+            },
+            # Player 4 - Orange scheme
+            {
+                'bg_light': '#FFF3E0', 'bg_dark': '#FFE0B2',
+                'bg_hover_light': '#FFF8F0', 'bg_hover_dark': '#FFF3E0',
+                'border': '#FF9800', 'border_hover': '#F57C00',
+                'text': '#E65100', 'button_bg': '#FFF3E0', 'button_hover': '#FFE0B2',
+                'arrow': '#F57C00'
+            },
+            # Player 5+ - Purple scheme
+            {
+                'bg_light': '#F3E5F5', 'bg_dark': '#E1BEE7',
+                'bg_hover_light': '#FAF0FB', 'bg_hover_dark': '#F3E5F5',
+                'border': '#9C27B0', 'border_hover': '#7B1FA2',
+                'text': '#4A148C', 'button_bg': '#F3E5F5', 'button_hover': '#E1BEE7',
+                'arrow': '#7B1FA2'
+            }
+        ]
+        
+        # Select color scheme based on player number
+        scheme_index = min((player_num - 1) % len(color_schemes), len(color_schemes) - 1)
+        return color_schemes[scheme_index]
+    
+    def _update_player_controls_styling(self, player_colors: dict):
+        """Update styling for player control buttons and display."""
+        # Button styling (Windows-standard)
+        button_style = f"""
+            QPushButton {{
+                background-color: {theme_manager.get_color('window_bg')};
+                border: 1px solid {player_colors['border']};
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: bold;
+                color: {player_colors['text']};
+                padding: 0px;
+            }}
+            QPushButton:hover {{
+                background-color: {player_colors['button_hover']};
+                border-color: {player_colors['border_hover']};
+            }}
+            QPushButton:pressed {{
+                background-color: {player_colors['bg_dark']};
+                border-color: {player_colors['border_hover']};
+            }}
+        """
+        
+        # Display styling (compact)
+        display_style = f"""
+            QLabel {{
+                background-color: {player_colors['bg_light']};
+                border: 1px solid {player_colors['border']};
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: bold;
+                color: {player_colors['text']};
+            }}
+        """
+        
+        self.decrease_button.setStyleSheet(button_style)
+        self.increase_button.setStyleSheet(button_style)
+        self.player_display.setStyleSheet(display_style)
     
     def _setup_style(self):
-        """Setup enhanced card styling."""
+        """Setup Windows-standard card styling."""
         self.setStyleSheet(f"""
             QFrame {{
                 background-color: {theme_manager.get_color('card_bg')};
-                border-radius: 12px;
-                border: 1px solid {theme_manager.get_color('border_primary')};
+                border-radius: 8px;
+                border: 1px solid {theme_manager.get_color('border_secondary')};
             }}
             QFrame:hover {{
-                border-color: {theme_manager.get_color('primary')};
-                box-shadow: 0px 2px 8px rgba(0, 122, 255, 0.1);
+                background-color: {theme_manager.get_color('window_bg')};
+                border-color: {theme_manager.get_color('border_primary')};
             }}
         """)
-        self.setFixedHeight(68)  # Compact height for better proportions
+        self.setFixedHeight(56)  # Windows-standard list item height
         
-        # Update icon color
+        # Update icon color to match new size
         self.controller_icon.setStyleSheet(f"""
             QLabel {{
-                font-size: 20px;
+                font-size: 16px;
                 color: {theme_manager.get_color('gaming_blue')};
-                min-width: 24px;
-                max-width: 24px;
+                min-width: 18px;
+                max-width: 18px;
             }}
         """)
     
-    def _on_toggle(self, checked: bool):
-        """Handle controller enable/disable toggle."""
-        self.is_enabled = checked
-        controller_id = getattr(self.controller, 'identifier', f'{self.controller.guid}_{self.controller.device_id}')
-        self.controller_toggled.emit(controller_id, checked)
-        
-        # Update visual state
-        if checked:
-            self.status_icon.setStyleSheet(f"color: {theme_manager.get_color('success')}; font-size: 12px;")
-            self.status_label.setText("Active")
-            self.status_label.setStyleSheet(f"color: {theme_manager.get_color('success')}; font-size: 11px; font-weight: 600;")
-            self.controller_icon.setStyleSheet(f"""
-                QLabel {{
-                    font-size: 20px;
-                    color: {theme_manager.get_color('success')};
-                    min-width: 24px;
-                    max-width: 24px;
-                }}
-            """)
-        else:
-            self.status_icon.setStyleSheet(f"color: {theme_manager.get_color('text_secondary')}; font-size: 12px;")
-            self.status_label.setText("Disabled")
-            self.status_label.setStyleSheet(f"color: {theme_manager.get_color('text_secondary')}; font-size: 11px; font-weight: 600;")
-            self.controller_icon.setStyleSheet(f"""
-                QLabel {{
-                    font-size: 20px;
-                    color: {theme_manager.get_color('text_tertiary')};
-                    min-width: 24px;
-                    max-width: 24px;
-                }}
-            """)
-        
-        # Enable/disable settings
-        self.player_spin.setEnabled(checked)
     
-    def _show_player_selector(self):
-        """Show player number selection (placeholder for now)."""
-        # This could be enhanced with a dropdown or dialog
-        pass
+    def _increment_player(self):
+        """Increment player number."""
+        new_value = min(self.current_player_num + 1, 128)
+        self._update_player_number(new_value)
     
-    def _on_controller_number_changed(self, value: int):
-        """Handle player number change."""
+    def _decrement_player(self):
+        """Decrement player number.""" 
+        new_value = max(self.current_player_num - 1, 1)
+        self._update_player_number(new_value)
+    
+    def _update_player_number(self, value: int):
+        """Update player number and UI with Windows-standard styling."""
+        self.current_player_num = value
+        self.player_display.setText(str(value))
+        
+        # Update colors based on new player number
+        player_colors = self._get_player_colors(value)
+        self._update_player_controls_styling(player_colors)
+        
+        # Emit signal
         controller_id = getattr(self.controller, 'identifier', f'{self.controller.guid}_{self.controller.device_id}')
         self.controller_number_changed.emit(controller_id, value)
-        # Update the player badge
-        self.player_badge.setText(f"P{value}")
-    
-    def update_status(self, status: str, color: str = None):
-        """Update controller status."""
-        self.status_label.setText(status)
-        if color:
-            # Map legacy colors to theme colors
-            if color == "#34C759":
-                theme_color = theme_manager.get_color("success")
-            elif color == "#FF9F0A":
-                theme_color = theme_manager.get_color("warning")
-            elif color == "#FF3B30":
-                theme_color = theme_manager.get_color("error")
-            else:
-                theme_color = theme_manager.get_color("text_secondary")
-            
-            self.status_icon.setStyleSheet(f"color: {theme_color}; font-size: 12px;")
-            self.status_label.setStyleSheet(f"color: {theme_color}; font-size: 11px; font-weight: 600;")
 
 
 class EnhancedVirtualControllerCard(QFrame):
