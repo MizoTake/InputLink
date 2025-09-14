@@ -5,7 +5,7 @@ import sys
 import time
 
 # Add src to path
-sys.path.insert(0, 'src')
+sys.path.insert(0, '../src')
 
 from input_link.core import ControllerManager
 from input_link.core.controller_manager import ControllerConnectionState

@@ -6,7 +6,7 @@ import time
 from unittest.mock import Mock
 
 # Add src to path
-sys.path.insert(0, 'src')
+sys.path.insert(0, '../src')
 
 from input_link.gui.application import InputLinkApplication
 from input_link.core import DetectedController

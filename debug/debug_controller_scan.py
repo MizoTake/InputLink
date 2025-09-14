@@ -3,7 +3,11 @@
 
 import sys
 import time
-from src.input_link.core import ControllerManager
+
+# Add src to path
+sys.path.insert(0, '../src')
+
+from input_link.core import ControllerManager
 
 def debug_controller_scanning():
     """Debug controller scanning behavior step by step."""

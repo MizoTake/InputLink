@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer
 
 # Add src to path
-sys.path.insert(0, 'src')
+sys.path.insert(0, '../src')
 
 from input_link.gui.application import InputLinkApplication, AsyncWorker
 from input_link.core import DetectedController

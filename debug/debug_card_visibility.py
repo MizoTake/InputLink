@@ -4,7 +4,7 @@
 import sys
 
 # Add src to path
-sys.path.insert(0, 'src')
+sys.path.insert(0, '../src')
 
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout
 from input_link.core import DetectedController

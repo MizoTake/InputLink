@@ -8,7 +8,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtCore import Qt, QTimer
 
 # Add src to path
-sys.path.insert(0, 'src')
+sys.path.insert(0, '../src')
 
 def trigger_scan_in_gui():
     """Connect to existing GUI and trigger scan."""
