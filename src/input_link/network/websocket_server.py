@@ -171,15 +171,9 @@ class WebSocketServer:
         sent_count = 0
         for client_id, websocket in list(self._clients.items()):
             if not websocket.closed:
-                try:
-                    await websocket.send(message.to_json())
-                    sent_count += 1
-                    logger.debug(f"Broadcast message to client {client_id}")
-                except ConnectionClosed:
-                    logger.debug(f"Client {client_id} disconnected during broadcast")
-                    await self._disconnect_client(client_id)
-                except Exception as e:
-                    logger.error(f"Failed to send to client {client_id}: {e}")
+                await websocket.send(message.to_json())
+                sent_count += 1
+                logger.debug(f"Broadcast message to client {client_id}")
 
         return sent_count
 
@@ -202,17 +196,9 @@ class WebSocketServer:
             logger.warning(f"Client {client_id} not found or disconnected")
             return False
 
-        try:
-            await websocket.send(message.to_json())
-            logger.debug(f"Sent message to client {client_id}")
-            return True
-        except ConnectionClosed:
-            logger.debug(f"Client {client_id} disconnected during send")
-            await self._disconnect_client(client_id)
-            return False
-        except Exception as e:
-            logger.error(f"Failed to send to client {client_id}: {e}")
-            return False
+        await websocket.send(message.to_json())
+        logger.debug(f"Sent message to client {client_id}")
+        return True
 
     async def _handle_client(self, websocket, path=None, client_addr: Optional[str] = None) -> None:
         """Handle new client connection.
@@ -223,10 +209,7 @@ class WebSocketServer:
         client_id = str(uuid.uuid4())
         # Allow tests to override the computed address for fakes
         if not client_addr:
-            try:
-                client_addr = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
-            except Exception:
-                client_addr = "unknown"
+            client_addr = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
 
         logger.info(f"New client connected: {client_id} from {client_addr}")
 
@@ -235,23 +218,17 @@ class WebSocketServer:
         self._client_tasks[client_id] = set()
         self._fire_status_callback("client_connected", client_id=client_id, address=client_addr)
 
-        try:
-            # Send welcome message
-            welcome_message = NetworkMessage.create_status_response_message(
-                active_controllers=0,
-                connection_status="connected",
-            )
-            await websocket.send(welcome_message.to_json())
+        # Send welcome message
+        welcome_message = NetworkMessage.create_status_response_message(
+            active_controllers=0,
+            connection_status="connected",
+        )
+        await websocket.send(welcome_message.to_json())
 
-            # Handle client messages
-            await self._handle_client_messages(client_id, websocket)
+        # Handle client messages
+        await self._handle_client_messages(client_id, websocket)
 
-        except ConnectionClosed:
-            logger.info(f"Client {client_id} disconnected normally")
-        except Exception as e:
-            logger.error(f"Error handling client {client_id}: {e}")
-        finally:
-            await self._disconnect_client(client_id)
+        await self._disconnect_client(client_id)
 
     async def _handle_client_messages(
         self,
@@ -264,32 +241,12 @@ class WebSocketServer:
             client_id: Client identifier
             websocket: WebSocket connection
         """
-        try:
-            async for raw_message in websocket:
-                try:
-                    message = NetworkMessage.from_json(raw_message)
-                    logger.debug(f"Received {message.message_type} from client {client_id}")
+        async for raw_message in websocket:
+            message = NetworkMessage.from_json(raw_message)
+            logger.debug(f"Received {message.message_type} from client {client_id}")
 
-                    # Process message based on type
-                    await self._process_client_message(client_id, websocket, message)
-
-                except Exception as e:
-                    logger.error(f"Failed to process message from client {client_id}: {e}")
-
-                    # Send error response
-                    error_message = NetworkMessage.create_error_message(
-                        error_code="INVALID_MESSAGE",
-                        error_description=str(e),
-                    )
-                    try:
-                        await websocket.send(error_message.to_json())
-                    except:
-                        pass  # Client may have disconnected
-
-        except ConnectionClosed:
-            logger.debug(f"Client {client_id} message handler connection closed")
-        except Exception as e:
-            logger.error(f"Error in client {client_id} message handler: {e}")
+            # Process message based on type
+            await self._process_client_message(client_id, websocket, message)
 
     async def _process_client_message(
         self,
@@ -306,10 +263,7 @@ class WebSocketServer:
         """
         # Call message callback if provided
         if self._message_callback:
-            try:
-                self._message_callback(message, client_id)
-            except Exception as e:
-                logger.error(f"Error in message callback: {e}")
+            self._message_callback(message, client_id)
 
         # Handle specific message types
         if message.message_type == MessageType.CONTROLLER_INPUT:
@@ -329,10 +283,7 @@ class WebSocketServer:
         """
         input_data = message.get_controller_input_data()
         if input_data and self._input_callback:
-            try:
-                self._input_callback(input_data)
-            except Exception as e:
-                logger.error(f"Error in input callback: {e}")
+            self._input_callback(input_data)
 
     async def _handle_status_request(
         self,
@@ -352,12 +303,7 @@ class WebSocketServer:
             connection_status="active",
         )
 
-        try:
-            await websocket.send(response.to_json())
-        except ConnectionClosed:
-            logger.debug(f"Client {client_id} disconnected during status response")
-        except Exception as e:
-            logger.error(f"Failed to send status response to {client_id}: {e}")
+        await websocket.send(response.to_json())
 
     async def _handle_heartbeat(
         self,
@@ -373,12 +319,7 @@ class WebSocketServer:
             message: Heartbeat message
         """
         # Echo heartbeat back
-        try:
-            await websocket.send(message.to_json())
-        except ConnectionClosed:
-            logger.debug(f"Client {client_id} disconnected during heartbeat response")
-        except Exception as e:
-            logger.error(f"Failed to send heartbeat response to {client_id}: {e}")
+        await websocket.send(message.to_json())
 
     async def _disconnect_client(self, client_id: str) -> None:
         """Disconnect and cleanup client.

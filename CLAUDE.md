@@ -25,6 +25,12 @@ make test-cov
 pytest -m unit        # Unit tests
 pytest -m integration # Integration tests
 pytest -m e2e         # End-to-end tests
+
+# Run single test file
+pytest tests/unit/test_controller_manager.py -v
+
+# Run with asyncio debugging
+pytest tests/ -v --log-level=DEBUG
 ```
 
 ### Code Quality
@@ -55,6 +61,9 @@ python main.py receiver [OPTIONS]  # CLI receiver
 python -m input_link.apps.sender
 python -m input_link.apps.receiver
 python -m input_link.apps.gui_main
+
+# Test controller detection
+python main.py sender --list-controllers
 ```
 
 ### Building
@@ -138,34 +147,46 @@ make clean
 
 ### Working with Controllers
 - Physical controllers detected via pygame
-- Controller identification uses stable identifiers
-- Input polling at 60Hz with dead zone handling
-- Multiple controllers supported (internal limit removed)
+- Controller identification uses stable identifiers (GUID + device_id format)
+- Input polling at 60Hz with dead zone handling in `InputCaptureEngine`
+- Multiple controllers supported (no internal limit, OS-dependent)
+- Auto-assignment of controller numbers with `_get_next_available_number()`
+- Controller state tracking through `ControllerConnectionState` enum
 
 ### Working with Virtual Controllers
-- Windows: Uses ViGEm Bus Driver for Xbox 360 emulation
-- macOS: Keyboard simulation (WASD + space) via pynput
-- Auto-creation up to configured maximum
+- Windows: Uses ViGEm Bus Driver for Xbox 360 emulation via `vgamepad`
+- macOS: Keyboard simulation (WASD + space) via `pynput`
+- Auto-creation up to configured maximum in `VirtualControllerManager`
 - 1:1 mapping from sender controller numbers to receiver virtual controllers
+- Factory pattern implementation in `VirtualControllerFactory.create_controller()`
 
 ### Configuration Management
 - Default location: `~/.input-link/config.json`
 - Auto-generated with sensible defaults
 - CLI parameters override config file
-- Pydantic validation ensures correctness
+- Pydantic v2 validation with `ConfigModel`, `SenderConfig`, `ReceiverConfig`
+- Runtime config injection into CLI apps via `config` attribute
 
 ### GUI Development
-- Apple HIG-compliant design system
-- PySide6 (Qt) with proper threading
-- AsyncWorker pattern for backend integration
-- Multi-window navigation with state management
+- Apple HIG-compliant design system with specific color palette
+- PySide6 (Qt) with proper threading via `AsyncWorker` on separate thread
+- Signal/slot communication for thread-safe GUI updates
+- Multi-window navigation with `QStackedWidget`
+- Real-time status updates via callback architecture
 
 ## Testing Strategy
 
 - **Unit Tests**: Fast component testing with mocks (`tests/unit/`)
+  - Mock pygame joystick objects for controller manager tests
+  - Mock websocket connections for network layer tests
+  - Pydantic model validation testing
 - **Integration Tests**: Cross-component interaction (`tests/integration/`)
+  - WebSocket client/server communication
+  - Controller manager + input capture integration
 - **E2E Tests**: Full workflow testing (`tests/e2e/`)
-- **Markers**: Use `pytest -m unit|integration|e2e|slow|asyncio`
+  - Complete sender -> receiver workflow
+- **Test Markers**: Use `pytest -m unit|integration|e2e|slow|asyncio`
+- **Async Testing**: Tests use `pytest-asyncio` for async/await patterns
 
 ## Important Notes
 
@@ -184,3 +205,57 @@ make clean
 - Three builds: Sender, Receiver, unified GUI
 - Platform-specific installers (NSIS/DMG)
 - GitHub Actions for automated releases
+
+## Key Implementation Patterns
+
+### Async Architecture
+- All I/O operations use `asyncio` for non-blocking execution
+- WebSocket client has automatic reconnection with exponential backoff
+- Message queuing with bounded `_LenQueue` wrapper around `asyncio.Queue`
+- Proper async context managers (`__aenter__`/`__aexit__`)
+
+### Error Handling & Logging
+- Centralized logging via `setup_application_logging()`
+- Callback-based logging integration for GUI apps
+- Graceful error handling with try/catch blocks
+- Connection state tracking with status callbacks
+
+### Data Validation
+- Pydantic v2 models with strict validation (`validate_assignment=True`)
+- Field validators for clamping controller input values (triggers, sticks)
+- JSON serialization/deserialization built into models
+- Configuration validation with CLI parameter override support
+
+### Threading & GUI Integration
+- `AsyncWorker` thread runs separate asyncio event loop
+- Qt signals/slots for thread-safe communication
+- `_schedule()` method for running coroutines on worker thread
+- Proper cleanup in `_on_about_to_quit()` handler
+
+### Controller Management
+- Stable controller identification via `f"{guid}_{device_id}"`
+- Auto-assignment with `_get_next_available_number()` (no fixed upper bound)
+- Controller type detection (`is_xbox_controller()`, `is_playstation_controller()`)
+- Dynamic controller mapping with live updates during runtime
+
+### Network Protocol
+- Typed message protocol via `NetworkMessage` class
+- JSON-based serialization with message type identification
+- Client connection state tracking and auto-reconnection
+- Server supports multiple concurrent clients
+
+### Virtual Controller Patterns
+- Platform-specific factory pattern for controller creation
+- Lifecycle management with creation/destruction callbacks
+- Auto-creation of virtual controllers on-demand
+- State synchronization with input data validation
+
+## Coding Rules
+
+### Error Handling
+- **Do NOT use try-catch blocks** - This is a strict coding rule for this project
+- Use alternative error handling patterns such as:
+  - Return value checking
+  - Status codes or result objects
+  - Early returns with validation
+  - Optional/Result type patterns where applicable

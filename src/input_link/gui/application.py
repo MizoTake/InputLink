@@ -28,6 +28,16 @@ class AsyncWorker(QThread):
     receiver_status_changed = Signal(str, str) # status, color
     log_message = Signal(str)
 
+    # Map sender status to display text and colors (kept identical)
+    STATUS_MAP = {
+        "connecting": ("Connecting...", "#FF9500"),
+        "connected": ("Connected", "#34C759"),
+        "disconnected": ("Disconnected", "#8E8E93"),
+        "reconnecting": ("Reconnecting...", "#FF9500"),
+        "failed": ("Connection Failed", "#FF3B30"),
+        "stopped": ("Stopped", "#8E8E93"),
+    }
+
     def __init__(self):
         super().__init__()
         self.sender_app: Optional[SenderApp] = None
@@ -61,30 +71,18 @@ class AsyncWorker(QThread):
         """Run the async event loop in this thread."""
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-
-        try:
-            self.loop.run_forever()
-        finally:
-            self.loop.run_until_complete(self.loop.shutdown_asyncgens())
-            self.loop.close()
+        self.loop.run_forever()
+        self.loop.run_until_complete(self.loop.shutdown_asyncgens())
+        self.loop.close()
 
     async def _async_stop(self):
         """Async shutdown: stop apps then the loop."""
-        try:
-            if self.sender_app and self.sender_app.running:
-                await self.sender_app.stop()
-        except Exception as e:
-            print(f"Error stopping sender app: {e}")
-        try:
-            if self.receiver_app and self.receiver_app.running:
-                await self.receiver_app.stop()
-        except Exception as e:
-            print(f"Error stopping receiver app: {e}")
-        # Stop the loop after services stop
-        try:
+        if self.sender_app and self.sender_app.running:
+            await self.sender_app.stop()
+        if self.receiver_app and self.receiver_app.running:
+            await self.receiver_app.stop()
+        if self.loop:
             self.loop.stop()
-        except Exception as e:
-            print(f"Error stopping event loop: {e}")
 
     def stop(self):
         """Stop the worker thread with proper cleanup."""
@@ -93,34 +91,20 @@ class AsyncWorker(QThread):
         # Schedule async stop sequence on the worker loop
         if self.loop and not self.loop.is_closed():
             fut = asyncio.run_coroutine_threadsafe(self._async_stop(), self.loop)
-            try:
-                fut.result(timeout=5)
-            except Exception as e:
-                print(f"Error during async stop sequence: {e}")
+            fut.result(timeout=5)
 
         # Cleanup worker thread
-        try:
-            self.quit()
-            self.wait(5000)  # Wait up to 5 seconds
-            if self.isRunning():
-                print("Force terminating worker thread")
-                self.terminate()
-        except Exception as e:
-            print(f"Error during worker cleanup: {e}")
+        self.quit()
+        self.wait(5000)  # Wait up to 5 seconds
+        if self.isRunning():
+            print("Force terminating worker thread")
+            self.terminate()
 
     def _sender_log_callback(self, level: str, message: str):
         self.log_message.emit(f"[Sender] {message}")
 
     def _sender_status_callback(self, status: str):
-        STATUS_MAP = {
-            "connecting": ("Connecting...", "#FF9500"),
-            "connected": ("Connected", "#34C759"),
-            "disconnected": ("Disconnected", "#8E8E93"),
-            "reconnecting": ("Reconnecting...", "#FF9500"),
-            "failed": ("Connection Failed", "#FF3B30"),
-            "stopped": ("Stopped", "#8E8E93"),
-        }
-        display_status, color = STATUS_MAP.get(status, ("Unknown", "#8E8E93"))
+        display_status, color = self.STATUS_MAP.get(status, ("Unknown", "#8E8E93"))
         self.sender_status_changed.emit(display_status, color)
 
     def _receiver_log_callback(self, level: str, message: str):
@@ -142,20 +126,44 @@ class AsyncWorker(QThread):
     @Slot()
     def scan_controllers(self):
         """Scan for controllers."""
+        print(f"\n=== AsyncWorker.scan_controllers() DEBUG START ===")
+
         if not self.controller_manager:
             self.controller_manager = ControllerManager()
+            print("Created new ControllerManager")
 
-        try:
-            # Ensure pygame joystick subsystem is initialized
-            self.controller_manager.initialize()
-            controllers = self.controller_manager.scan_controllers()
-            self.controller_detected.emit(controllers)
-            self.logger.info(f"Found {len(controllers)} controllers")
-            self.log_message.emit(f"Found {len(controllers)} controllers")
-        except Exception as e:
-            self.logger.error(f"Controller scan error: {e}")
-            self.log_message.emit(f"Controller scan error: {e}")
-            self.controller_detected.emit([])
+        # Ensure pygame joystick subsystem is initialized
+        self.controller_manager.initialize()
+        print("Controller manager initialized")
+
+        # Scan for controllers and get only connected ones
+        all_controllers = self.controller_manager.scan_controllers()
+        connected_controllers = self.controller_manager.get_connected_controllers()
+
+        print(f"Scan results: {len(all_controllers)} total, {len(connected_controllers)} connected")
+
+        # Debug log details
+        print("All controllers:")
+        for i, controller in enumerate(all_controllers):
+            print(f"  [{i}] {controller.name} - State: {controller.state} - ID: {controller.identifier}")
+
+        print("Connected controllers:")
+        for i, controller in enumerate(connected_controllers):
+            print(f"  [{i}] {controller.name} - State: {controller.state} - ID: {controller.identifier}")
+
+        self.logger.info(f"Scan results: {len(all_controllers)} total, {len(connected_controllers)} connected")
+
+        # Debug log details
+        for controller in all_controllers:
+            self.logger.info(f"  Controller: {controller.name} - State: {controller.state} - ID: {controller.identifier}")
+
+        print(f"About to emit controller_detected signal with {len(connected_controllers)} controllers")
+        self.controller_detected.emit(connected_controllers)
+        print("controller_detected signal emitted")
+
+        self.log_message.emit(f"Found {len(connected_controllers)} connected controllers")
+        print("log_message signal emitted")
+        print(f"=== AsyncWorker.scan_controllers() DEBUG END ===\n")
 
     @Slot()
     def start_sender(self):
@@ -191,7 +199,7 @@ class AsyncWorker(QThread):
         )
         # Inject config prepared from UI
         self.sender_app.config = cfg
-        asyncio.run_coroutine_threadsafe(self.sender_app.start(), self.loop)
+        self._schedule(self.sender_app.start())
 
     @Slot()
     def stop_sender(self):
@@ -202,7 +210,7 @@ class AsyncWorker(QThread):
             return
 
         if self.loop and self.sender_app:
-            asyncio.run_coroutine_threadsafe(self.sender_app.stop(), self.loop)
+            self._schedule(self.sender_app.stop())
 
     @Slot()
     def start_receiver(self):
@@ -230,7 +238,7 @@ class AsyncWorker(QThread):
         )
         # Inject config prepared from UI
         self.receiver_app.config = cfg
-        asyncio.run_coroutine_threadsafe(self.receiver_app.start(), self.loop)
+        self._schedule(self.receiver_app.start())
 
     @Slot(dict)
     def on_sender_settings_changed(self, payload: Dict):
@@ -248,12 +256,11 @@ class AsyncWorker(QThread):
             # Live-update network settings if sender is running
             try:
                 if self.sender_app and self.sender_app.running and self.loop:
-                    asyncio.run_coroutine_threadsafe(
+                    self._schedule(
                         self.sender_app.update_network_settings(
                             self.sender_settings["host"],
                             int(self.sender_settings["port"]),
-                        ),
-                        self.loop,
+                        )
                     )
             except Exception:
                 pass
@@ -307,7 +314,18 @@ class AsyncWorker(QThread):
             return
 
         if self.loop and self.receiver_app:
-            asyncio.run_coroutine_threadsafe(self.receiver_app.stop(), self.loop)
+            self._schedule(self.receiver_app.stop())
+
+    def _schedule(self, coro):
+        """Schedule a coroutine on the worker loop, handling errors uniformly."""
+        if not (self.loop and not self.loop.is_closed()):
+            return None
+        try:
+            return asyncio.run_coroutine_threadsafe(coro, self.loop)
+        except Exception as e:
+            # Keep existing behavior: print errors to stdout
+            print(f"Error scheduling coroutine: {e}")
+            return None
 
 
 class InputLinkApplication(QApplication):
@@ -333,6 +351,8 @@ class InputLinkApplication(QApplication):
         self.receiver_window: Optional[ReceiverWindow] = None
         self.stacked_widget: Optional[QStackedWidget] = None
         self.async_worker: Optional[AsyncWorker] = None
+        # Cache last known non-empty controller list to avoid clearing UI on transient empty scans
+        self._last_controllers = []
 
         # Ensure graceful shutdown on app quit
         self.aboutToQuit.connect(self._on_about_to_quit)
@@ -420,90 +440,64 @@ class InputLinkApplication(QApplication):
 
     def _connect_main_window_signals(self):
         """Connect main window signals."""
-        try:
-            if self.main_window is None:
-                print("Error: MainWindow is None")
-                return
-                
-            if not hasattr(self.main_window, 'start_sender'):
-                print("Error: MainWindow missing start_sender signal")
-                return
-                
-            self.main_window.start_sender.connect(self._show_sender_window)
-            self.main_window.start_receiver.connect(self._show_receiver_window)
-            self.main_window.stop_services.connect(self._stop_all_services)
-            print("MainWindow signals connected successfully")
-        except Exception as e:
-            print(f"Error connecting main window signals: {e}")
-            import traceback
-            traceback.print_exc()
+        if self.main_window is None:
+            print("Error: MainWindow is None")
+            return
+        if not hasattr(self.main_window, 'start_sender'):
+            print("Error: MainWindow missing start_sender signal")
+            return
+        self.main_window.start_sender.connect(self._show_sender_window)
+        self.main_window.start_receiver.connect(self._show_receiver_window)
+        self.main_window.stop_services.connect(self._stop_all_services)
+        print("MainWindow signals connected successfully")
 
     def _connect_sender_window_signals(self):
         """Connect sender window signals."""
-        try:
-            print(f"SenderWindow check: {self.sender_window is not None}")
-            print(f"AsyncWorker check: {self.async_worker is not None}")
-            print(f"start_capture check: {hasattr(self.sender_window, 'start_capture') if self.sender_window else False}")
-            print(f"back_btn check: {hasattr(self.sender_window, 'back_btn') if self.sender_window else False}")
-            print(f"scan_btn check: {hasattr(self.sender_window, 'scan_btn') if self.sender_window else False}")
-            
-            if self.sender_window and self.async_worker:
-                # Connect available signals
-                if hasattr(self.sender_window, 'start_capture'):
-                    self.sender_window.start_capture.connect(self.async_worker.start_sender)
-                    print("Connected start_capture signal")
-                if hasattr(self.sender_window, 'stop_capture'):
-                    self.sender_window.stop_capture.connect(self._stop_sender)
-                    print("Connected stop_capture signal")
-                if hasattr(self.sender_window, 'back_btn'):
-                    self.sender_window.back_btn.clicked.connect(self._show_main_window)
-                    print("Connected back_btn signal")
-                if hasattr(self.sender_window, 'scan_btn'):
-                    self.sender_window.scan_btn.clicked.connect(self.async_worker.scan_controllers)
-                    print("Connected scan_btn signal")
-                if hasattr(self.sender_window, 'settings_changed'):
-                    self.sender_window.settings_changed.connect(self.async_worker.on_sender_settings_changed)
-                    print("Connected sender settings_changed signal")
-                if hasattr(self.sender_window, 'controller_enabled'):
-                    self.sender_window.controller_enabled.connect(self.async_worker.on_sender_controller_enabled)
-                    print("Connected sender controller_enabled signal")
-                print("SenderWindow signals connected successfully")
-            else:
-                print("Warning: SenderWindow or AsyncWorker not available")
-        except Exception as e:
-            print(f"Error connecting sender window signals: {e}")
-            import traceback
-            traceback.print_exc()
+        print(f"SenderWindow check: {self.sender_window is not None}")
+        print(f"AsyncWorker check: {self.async_worker is not None}")
+        print(f"start_capture check: {hasattr(self.sender_window, 'start_capture') if self.sender_window else False}")
+        print(f"back_btn check: {hasattr(self.sender_window, 'back_btn') if self.sender_window else False}")
+        print(f"scan_btn check: {hasattr(self.sender_window, 'scan_btn') if self.sender_window else False}")
+        if self.sender_window and self.async_worker:
+            # Connect available signals
+            self._connect_signal(self.sender_window, 'start_capture', self.async_worker.start_sender, "Connected start_capture signal")
+            self._connect_signal(self.sender_window, 'stop_capture', self._stop_sender, "Connected stop_capture signal")
+            if hasattr(self.sender_window, 'back_btn'):
+                self.sender_window.back_btn.clicked.connect(self._show_main_window)
+                print("Connected back_btn signal")
+            # High-level request + settings and toggles (avoid double-scanning)
+            self._connect_signal(self.sender_window, 'scan_controllers_requested', self.async_worker.scan_controllers, "Connected scan_controllers_requested signal")
+            self._connect_signal(self.sender_window, 'settings_changed', self.async_worker.on_sender_settings_changed, "Connected sender settings_changed signal")
+            self._connect_signal(self.sender_window, 'controller_enabled', self.async_worker.on_sender_controller_enabled, "Connected sender controller_enabled signal")
+            print("SenderWindow signals connected successfully")
+        else:
+            print("Warning: SenderWindow or AsyncWorker not available")
 
     def _connect_receiver_window_signals(self):
         """Connect receiver window signals."""
-        try:
-            print(f"ReceiverWindow check: {self.receiver_window is not None}")
-            print(f"start_server check: {hasattr(self.receiver_window, 'start_server') if self.receiver_window else False}")
-            print(f"stop_server check: {hasattr(self.receiver_window, 'stop_server') if self.receiver_window else False}")
-            print(f"back_btn check: {hasattr(self.receiver_window, 'back_btn') if self.receiver_window else False}")
-            
-            if self.receiver_window and self.async_worker:
-                # Connect available signals
-                if hasattr(self.receiver_window, 'start_server'):
-                    self.receiver_window.start_server.connect(self.async_worker.start_receiver)
-                    print("Connected start_server signal")
-                if hasattr(self.receiver_window, 'stop_server'):
-                    self.receiver_window.stop_server.connect(self._stop_receiver)
-                    print("Connected stop_server signal")
-                if hasattr(self.receiver_window, 'back_btn'):
-                    self.receiver_window.back_btn.clicked.connect(self._show_main_window)
-                    print("Connected back_btn signal")
-                if hasattr(self.receiver_window, 'settings_changed'):
-                    self.receiver_window.settings_changed.connect(self.async_worker.on_receiver_settings_changed)
-                    print("Connected receiver settings_changed signal")
-                print("ReceiverWindow signals connected successfully")
-            else:
-                print("Warning: ReceiverWindow or AsyncWorker not available")
-        except Exception as e:
-            print(f"Error connecting receiver window signals: {e}")
-            import traceback
-            traceback.print_exc()
+        print(f"ReceiverWindow check: {self.receiver_window is not None}")
+        print(f"start_server check: {hasattr(self.receiver_window, 'start_server') if self.receiver_window else False}")
+        print(f"stop_server check: {hasattr(self.receiver_window, 'stop_server') if self.receiver_window else False}")
+        print(f"back_btn check: {hasattr(self.receiver_window, 'back_btn') if self.receiver_window else False}")
+        if self.receiver_window and self.async_worker:
+            # Connect available signals
+            self._connect_signal(self.receiver_window, 'start_server', self.async_worker.start_receiver, "Connected start_server signal")
+            self._connect_signal(self.receiver_window, 'stop_server', self._stop_receiver, "Connected stop_server signal")
+            if hasattr(self.receiver_window, 'back_btn'):
+                self.receiver_window.back_btn.clicked.connect(self._show_main_window)
+                print("Connected back_btn signal")
+            self._connect_signal(self.receiver_window, 'settings_changed', self.async_worker.on_receiver_settings_changed, "Connected receiver settings_changed signal")
+            print("ReceiverWindow signals connected successfully")
+        else:
+            print("Warning: ReceiverWindow or AsyncWorker not available")
+
+    def _connect_signal(self, source, signal_name: str, slot, success_message: str):
+        """Connect a signal by name to a slot if present, printing a debug line.
+        Preserves behavior/messages while reducing repetition.
+        """
+        if hasattr(source, signal_name):
+            getattr(source, signal_name).connect(slot)
+            print(success_message)
 
     @Slot()
     def _show_main_window(self):
@@ -523,12 +517,9 @@ class InputLinkApplication(QApplication):
     @Slot()
     def _stop_all_services(self):
         """Stop all running services."""
-        try:
-            self._stop_sender()
-            self._stop_receiver()
-            self.main_window.add_log_message("All services stopped")
-        except Exception as e:
-            self.main_window.add_log_message(f"Error stopping services: {e}")
+        self._stop_sender()
+        self._stop_receiver()
+        self.main_window.add_log_message("All services stopped")
 
     @Slot()
     def _stop_sender(self):
@@ -545,7 +536,24 @@ class InputLinkApplication(QApplication):
     @Slot(list)
     def _on_controllers_detected(self, controllers):
         """Handle controller detection results."""
+        print(f"\n=== InputLinkApplication._on_controllers_detected() DEBUG ===")
+        print(f"Received signal with {len(controllers)} controllers")
+        for i, controller in enumerate(controllers):
+            print(f"  [{i}] {controller.name} - {controller.state} - {controller.identifier}")
+
+        print("About to call sender_window.update_controllers()")
+        # Always update UI with current scan results
         self.sender_window.update_controllers(controllers)
+        print("sender_window.update_controllers() completed")
+
+        self._last_controllers = controllers
+        print(f"_last_controllers updated: {len(self._last_controllers)} controllers")
+
+        if not controllers:
+            self.main_window.add_log_message("No controllers found")
+            print("Added 'No controllers found' log message")
+
+        print(f"=== _on_controllers_detected() DEBUG END ===\n")
 
     @Slot(str, str)
     def _on_sender_status_changed(self, status, color):
@@ -567,78 +575,37 @@ class InputLinkApplication(QApplication):
 
     def _on_about_to_quit(self):
         """Ensure background threads and loops stop before app exit."""
-        try:
-            # Stop async worker first
-            if hasattr(self, 'async_worker') and self.async_worker:
-                print("Stopping async worker (aboutToQuit)...")
-                try:
-                    self.async_worker.stop()
-                    self.async_worker.wait(3000)
-                except Exception as e:
-                    print(f"Error stopping async worker: {e}")
+        # Stop async worker first
+        if hasattr(self, 'async_worker') and self.async_worker:
+            print("Stopping async worker (aboutToQuit)...")
+            self.async_worker.stop()
+            self.async_worker.wait(3000)
 
-            # Close stacked widget if it exists
-            if hasattr(self, 'stacked_widget') and self.stacked_widget:
-                try:
-                    self.stacked_widget.close()
-                except Exception as e:
-                    print(f"Error closing stacked widget: {e}")
+        # Close stacked widget if it exists
+        if hasattr(self, 'stacked_widget') and self.stacked_widget:
+            self.stacked_widget.close()
 
-            # Close individual windows
-            for window_name in ['main_window', 'sender_window', 'receiver_window']:
-                if hasattr(self, window_name):
-                    window = getattr(self, window_name)
-                    if window and not window.isHidden():
-                        try:
-                            window.close()
-                        except Exception as e:
-                            print(f"Error closing {window_name}: {e}")
-        except Exception as e:
-            print(f"Error during aboutToQuit cleanup: {e}")
+        # Close individual windows
+        for window_name in ['main_window', 'sender_window', 'receiver_window']:
+            if hasattr(self, window_name):
+                window = getattr(self, window_name)
+                if window and not window.isHidden():
+                    window.close()
 
 
 def run_gui_application():
     """Run the GUI application."""
-    logger = None
-    try:
-        # Initialize early logging
-        logger = setup_application_logging(
-            app_name="gui_main",
-            config=None,
-            verbose=False,
-            log_callback=None,
-        )
-        
-        logger.info("Starting Input Link GUI application...")
-        app = InputLinkApplication(sys.argv)
-        logger.info("Application initialized successfully")
-        
-        return app.exec()
-    except ImportError as e:
-        error_msg = f"Import error - missing dependencies: {e}"
-        if logger:
-            logger.error(error_msg)
-        else:
-            print(error_msg)
-        print("Please install GUI dependencies: pip install PySide6")
-        return 1
-    except KeyboardInterrupt:
-        interrupt_msg = "Application interrupted by user"
-        if logger:
-            logger.info(interrupt_msg)
-        else:
-            print(f"\\n{interrupt_msg}")
-        return 0
-    except Exception as e:
-        error_msg = f"Application error: {e}"
-        if logger:
-            logger.error(error_msg)
-            logger.exception("Full traceback:")
-        else:
-            print(error_msg)
-            import traceback
-            traceback.print_exc()
-        return 1
+    # Initialize early logging
+    logger = setup_application_logging(
+        app_name="gui_main",
+        config=None,
+        verbose=False,
+        log_callback=None,
+    )
+    logger.info("Starting Input Link GUI application...")
+    app = InputLinkApplication(sys.argv)
+    logger.info("Application initialized successfully")
+    return app.exec()
 
 
 if __name__ == "__main__":

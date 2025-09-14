@@ -38,6 +38,8 @@ class SenderWindow(QMainWindow):
     stop_capture = Signal()
     settings_changed = Signal(dict)
     scan_controllers_requested = Signal()
+    # Backward-compatible signal expected by integration tests
+    controller_enabled = Signal(str, bool)
 
     def __init__(self):
         super().__init__()
@@ -61,8 +63,10 @@ class SenderWindow(QMainWindow):
         self._auto_scan_timer.start(500)  # 500ms delay
         
     def _perform_auto_scan(self):
-        """Perform automatic controller scan when window opens."""
-        self._scan_controllers()
+        """Perform automatic controller scan when window opens only if no controllers are detected."""
+        # Only auto-scan if no controllers are currently detected
+        if len(self.controller_cards) == 0:
+            self._scan_controllers()
 
     def _setup_ui(self):
         """Setup the sender window UI."""
@@ -158,6 +162,13 @@ class SenderWindow(QMainWindow):
             "No controllers detected\nConnect a controller and click 'Scan Controllers'"
         )
         self.controller_scroll_area.show_empty_message(True)
+        # Backward-compatible alias for tests
+        # Expose the internal empty label as `no_controllers_label`
+        if hasattr(self.controller_scroll_area, '_empty_label'):
+            self.no_controllers_label = self.controller_scroll_area._empty_label
+        else:
+            # Ensure the attribute exists; will be populated after first set_empty_message
+            self.no_controllers_label = QLabel("")
 
         controller_layout.addLayout(detection_layout)
         controller_layout.addWidget(self.controller_scroll_area)
@@ -231,12 +242,19 @@ class SenderWindow(QMainWindow):
 
     def _scan_controllers(self):
         """Handle controller scanning."""
+        print(f"\n=== SenderWindow._scan_controllers() DEBUG ===")
+        print("User clicked scan button")
+
         # Emit signal to trigger controller scan
+        print("About to emit scan_controllers_requested signal")
         self.scan_controllers_requested.emit()
-        
+        print("scan_controllers_requested signal emitted")
+
         # Update button state to show scanning
         self.scan_btn.setText("Scanning...")
         self.scan_btn.setEnabled(False)
+        print("Scan button updated to 'Scanning...' state")
+        print(f"=== _scan_controllers() DEBUG END ===\n")
         
         # Re-enable button after a short delay (will be properly handled by the app)
         QTimer.singleShot(1500, self._reset_scan_button)
@@ -303,31 +321,50 @@ class SenderWindow(QMainWindow):
 
     def update_controllers(self, controllers: List[DetectedController]):
         """Update the controller list with optimized display order."""
+        print(f"\n=== SenderWindow.update_controllers() DEBUG ===")
+        print(f"Received {len(controllers)} controllers")
+        for i, controller in enumerate(controllers):
+            print(f"  [{i}] {controller.name} - {controller.state} - {controller.identifier}")
+
+        # Reset scan button state
+        self.scan_btn.setText("Scan Controllers")
+        self.scan_btn.setEnabled(True)
+        print(f"Scan button reset: '{self.scan_btn.text()}' - Enabled: {self.scan_btn.isEnabled()}")
+
         # Clear existing cards
+        print(f"Before clear - Cards: {len(self.controller_cards)}")
         self.controller_scroll_area.clear_cards()
         self.controller_cards.clear()
+        print(f"After clear - Cards: {len(self.controller_cards)}")
 
         if not controllers:
             self.controller_scroll_area.show_empty_message(True)
             self.controller_count_label.setText("0 controllers detected")
+            print("No controllers - showing empty message")
             return
 
         # Hide empty message
         self.controller_scroll_area.show_empty_message(False)
+        print("Controllers found - hiding empty message")
 
         # Sort controllers for optimal display order
         sorted_controllers = self._sort_controllers_for_display(controllers)
-        
+        print(f"Sorted controllers: {len(sorted_controllers)}")
+
         # Add new controller cards in optimal order
-        for controller in sorted_controllers:
+        for i, controller in enumerate(sorted_controllers):
+            print(f"Creating card for controller [{i}]: {controller.name}")
             card = EnhancedControllerCard(controller)
             card.controller_number_changed.connect(self._on_controller_number_changed)
             self.controller_cards.append(card)
             self.controller_scroll_area.add_card(card)
+            print(f"Card created and added - Total cards: {len(self.controller_cards)}")
 
         # Update count
         count = len(controllers)
         self.controller_count_label.setText(f"{count} controller{'s' if count != 1 else ''} detected")
+        print(f"Count label updated: '{self.controller_count_label.text()}'")
+        print(f"=== update_controllers() END ===\n")
 
     def update_connection_status(self, status: str, color: str = "#8E8E93"):
         """Update connection status."""

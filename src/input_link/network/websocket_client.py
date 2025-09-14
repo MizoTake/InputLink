@@ -114,12 +114,7 @@ class WebSocketClient:
 
         # Close WebSocket connection
         if self._websocket:
-            # Closing is idempotent across websockets versions; avoid accessing
-            # non-portable attributes like `.closed`.
-            try:
-                await self._websocket.close()
-            except Exception:
-                pass
+            await self._websocket.close()
 
         # Cancel all tasks
         for task in list(self._tasks):
@@ -179,41 +174,33 @@ class WebSocketClient:
     async def _connection_loop(self) -> None:
         """Main connection loop with reconnection logic."""
         while self._running:
-            try:
-                if self._status_callback:
-                    self._status_callback("connecting")
-                websocket = await websockets.connect(
-                    self.uri,
-                    ping_timeout=self._ping_timeout,
-                    close_timeout=10,
-                )
-                self._websocket = websocket
-                self._connected = True
-                self._reconnect_attempts = 0
+            if self._status_callback:
+                self._status_callback("connecting")
+            websocket = await websockets.connect(
+                self.uri,
+                ping_timeout=self._ping_timeout,
+                close_timeout=10,
+            )
+            self._websocket = websocket
+            self._connected = True
+            self._reconnect_attempts = 0
 
-                logger.info(f"Connected to WebSocket server at {self.uri}")
-                if self._status_callback:
-                    self._status_callback("connected")
+            logger.info(f"Connected to WebSocket server at {self.uri}")
+            if self._status_callback:
+                self._status_callback("connected")
 
-                # Create message receiver task
-                receiver_task = asyncio.create_task(self._message_receiver(websocket))
-                self._tasks.add(receiver_task)
-                receiver_task.add_done_callback(self._tasks.discard)
+            # Create message receiver task
+            receiver_task = asyncio.create_task(self._message_receiver(websocket))
+            self._tasks.add(receiver_task)
+            receiver_task.add_done_callback(self._tasks.discard)
 
-                # Wait for connection to close
-                await websocket.wait_closed()
+            # Wait for connection to close
+            await websocket.wait_closed()
 
-            except (ConnectionClosed, ConnectionClosedOK, ConnectionClosedError) as e:
-                logger.warning(f"WebSocket connection closed: {e}")
-
-            except Exception as e:
-                logger.error(f"WebSocket connection error: {e}")
-
-            finally:
-                self._connected = False
-                self._websocket = None
-                if self._status_callback:
-                    self._status_callback("disconnected")
+            self._connected = False
+            self._websocket = None
+            if self._status_callback:
+                self._status_callback("disconnected")
 
             # Reconnection logic (max_reconnect_attempts <= 0 means infinite)
             if self._running and (
@@ -239,60 +226,30 @@ class WebSocketClient:
         Args:
             websocket: WebSocket connection
         """
-        try:
-            async for message in websocket:
-                try:
-                    network_message = NetworkMessage.from_json(message)
-                    logger.debug(f"Received message: {network_message.message_type}")
+        async for message in websocket:
+            network_message = NetworkMessage.from_json(message)
+            logger.debug(f"Received message: {network_message.message_type}")
 
-                    # Call message callback if provided
-                    if self._message_callback:
-                        try:
-                            self._message_callback(network_message)
-                        except Exception as e:
-                            logger.error(f"Error in message callback: {e}")
-
-                except Exception as e:
-                    logger.error(f"Failed to parse received message: {e}")
-
-        except ConnectionClosed:
-            logger.debug("Message receiver connection closed")
-        except Exception as e:
-            logger.error(f"Error in message receiver: {e}")
+            # Call message callback if provided
+            if self._message_callback:
+                self._message_callback(network_message)
 
     async def _message_sender(self) -> None:
         """Send queued messages to server."""
         while self._running:
             try:
-                # Wait for message with timeout
-                try:
-                    message = await asyncio.wait_for(
-                        self._message_queue.get(),
-                        timeout=1.0,
-                    )
-                except asyncio.TimeoutError:
-                    continue
+                message = await asyncio.wait_for(
+                    self._message_queue.get(),
+                    timeout=1.0,
+                )
+            except asyncio.TimeoutError:
+                continue
 
-                # Send message if connected
-                if self.connected:
-                    try:
-                        await self._websocket.send(message.to_json())
-                        logger.debug(f"Sent message: {message.message_type}")
-                    except ConnectionClosed:
-                        logger.debug("Connection closed while sending message")
-                        # Re-queue message
-                        await self._message_queue.put(message)
-                    except Exception as e:
-                        logger.error(f"Failed to send message: {e}")
-                        # Re-queue message
-                        await self._message_queue.put(message)
-                else:
-                    # Re-queue message if not connected
-                    await self._message_queue.put(message)
-                    await asyncio.sleep(0.1)
-
-            except Exception as e:
-                logger.error(f"Error in message sender: {e}")
+            if self.connected:
+                await self._websocket.send(message.to_json())
+                logger.debug(f"Sent message: {message.message_type}")
+            else:
+                await self._message_queue.put(message)
                 await asyncio.sleep(0.1)
 
     async def __aenter__(self):

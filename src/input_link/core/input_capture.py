@@ -101,10 +101,16 @@ class InputCaptureEngine:
         Returns:
             Next input data or None if timeout
         """
-        try:
-            return self._input_queue.get(timeout=timeout)
-        except Empty:
-            return None
+        if timeout <= 0:
+            if self._input_queue.empty():
+                return None
+            return self._input_queue.get_nowait()
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if not self._input_queue.empty():
+                return self._input_queue.get_nowait()
+            time.sleep(0.01)
+        return None
 
     def get_current_state(self, controller_id: str) -> Optional[ControllerInputData]:
         """Get current state of a specific controller.
@@ -124,66 +130,55 @@ class InputCaptureEngine:
         while self._running:
             start_time = time.perf_counter()
 
-            try:
-                # Update pygame event queue to handle device changes
-                pygame.event.pump()
+            # Update pygame event queue to handle device changes
+            pygame.event.pump()
 
-                # Process all connected controllers
-                connected_controllers = self._controller_manager.get_connected_controllers()
+            # Process all connected controllers
+            connected_controllers = self._controller_manager.get_connected_controllers()
 
-                for controller in connected_controllers:
-                    if controller.assigned_number is None:
-                        continue  # Skip unassigned controllers
+            for controller in connected_controllers:
+                if controller.assigned_number is None:
+                    continue  # Skip unassigned controllers
 
-                    input_data = self._capture_controller_input(controller)
-                    if input_data:
-                        # Check if state changed or button repeat is enabled
-                        previous_state = self._previous_states.get(controller.identifier)
+                input_data = self._capture_controller_input(controller)
+                if input_data:
+                    # Check if state changed or button repeat is enabled
+                    previous_state = self._previous_states.get(controller.identifier)
 
-                        if (self._config.enable_button_repeat or
-                            previous_state is None or
-                            self._state_changed(previous_state, input_data)):
+                    if (self._config.enable_button_repeat or
+                        previous_state is None or
+                        self._state_changed(previous_state, input_data)):
 
-                            # Store current state
-                            self._previous_states[controller.identifier] = input_data
+                        # Store current state
+                        self._previous_states[controller.identifier] = input_data
 
-                            # Queue input data
+                        # Queue input data; if full, drop oldest then add
+                        if self._input_queue.full():
                             try:
-                                self._input_queue.put_nowait(input_data)
-                            except:
-                                # Queue full, remove oldest item and add new one
-                                try:
-                                    self._input_queue.get_nowait()
-                                    self._input_queue.put_nowait(input_data)
-                                except Empty:
-                                    pass
+                                self._input_queue.get_nowait()
+                            except Empty:
+                                pass
+                        self._input_queue.put_nowait(input_data)
 
-                            # Call callback if provided
-                            if self._input_callback:
-                                try:
-                                    result = self._input_callback(input_data)
-                                    # If callback returned a coroutine, schedule it on provided loop
-                                    if inspect.iscoroutine(result):
-                                        if self._event_loop and self._event_loop.is_running():
-                                            self._event_loop.call_soon_threadsafe(
-                                                asyncio.create_task, result
-                                            )
-                                        else:
-                                            logger.error(
-                                                "Async input_callback provided but no running event loop set"
-                                            )
-                                except Exception as e:
-                                    logger.error(f"Error in input callback: {e}")
+                        # Call callback if provided
+                        if self._input_callback:
+                            result = self._input_callback(input_data)
+                            # If callback returned a coroutine, schedule it on provided loop
+                            if inspect.iscoroutine(result):
+                                if self._event_loop and self._event_loop.is_running():
+                                    self._event_loop.call_soon_threadsafe(
+                                        asyncio.create_task, result
+                                    )
+                                else:
+                                    logger.error(
+                                        "Async input_callback provided but no running event loop set"
+                                    )
 
-                # Maintain polling rate
-                elapsed = time.perf_counter() - start_time
-                sleep_time = max(0, poll_interval - elapsed)
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
-
-            except Exception as e:
-                logger.error(f"Error in capture loop: {e}")
-                time.sleep(0.1)  # Brief pause on error
+            # Maintain polling rate
+            elapsed = time.perf_counter() - start_time
+            sleep_time = max(0, poll_interval - elapsed)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
     def _capture_controller_input(self, controller: DetectedController) -> Optional[ControllerInputData]:
         """Capture input from a specific controller.
@@ -194,33 +189,28 @@ class InputCaptureEngine:
         Returns:
             Controller input data or None on error
         """
-        try:
-            # Get or create pygame joystick
-            joystick = self._get_pygame_joystick(controller)
-            if not joystick:
-                return None
-
-            # Capture button states
-            buttons = self._capture_button_state(joystick)
-
-            # Capture axis states
-            axes = self._capture_axis_state(joystick)
-
-            # Create input data
-            input_data = ControllerInputData(
-                controller_number=controller.assigned_number,
-                controller_id=controller.identifier,
-                input_method=controller.preferred_input_method,
-                buttons=buttons,
-                axes=axes,
-                timestamp=datetime.now(timezone.utc).timestamp(),
-            )
-
-            return input_data
-
-        except Exception as e:
-            logger.error(f"Error capturing input from {controller.name}: {e}")
+        # Get or create pygame joystick
+        joystick = self._get_pygame_joystick(controller)
+        if not joystick:
             return None
+
+        # Capture button states
+        buttons = self._capture_button_state(joystick)
+
+        # Capture axis states
+        axes = self._capture_axis_state(joystick)
+
+        # Create input data
+        input_data = ControllerInputData(
+            controller_number=controller.assigned_number,
+            controller_id=controller.identifier,
+            input_method=controller.preferred_input_method,
+            buttons=buttons,
+            axes=axes,
+            timestamp=datetime.now(timezone.utc).timestamp(),
+        )
+
+        return input_data
 
     def _get_pygame_joystick(self, controller: DetectedController) -> Optional[pygame.joystick.Joystick]:
         """Get or create pygame joystick instance.
@@ -234,14 +224,10 @@ class InputCaptureEngine:
         pygame_id = controller.pygame_id
 
         if pygame_id not in self._pygame_joysticks:
-            try:
-                joystick = pygame.joystick.Joystick(pygame_id)
-                joystick.init()
-                self._pygame_joysticks[pygame_id] = joystick
-                logger.debug(f"Initialized pygame joystick for {controller.name}")
-            except pygame.error as e:
-                logger.error(f"Failed to initialize joystick {pygame_id}: {e}")
-                return None
+            joystick = pygame.joystick.Joystick(pygame_id)
+            joystick.init()
+            self._pygame_joysticks[pygame_id] = joystick
+            logger.debug(f"Initialized pygame joystick for {controller.name}")
 
         return self._pygame_joysticks.get(pygame_id)
 
@@ -256,32 +242,28 @@ class InputCaptureEngine:
         """
         buttons = ButtonState()
 
-        try:
-            num_buttons = joystick.get_numbuttons()
+        num_buttons = joystick.get_numbuttons()
 
-            # Standard Xbox controller button mapping
-            if num_buttons >= 10:
-                buttons.a = bool(joystick.get_button(0))
-                buttons.b = bool(joystick.get_button(1))
-                buttons.x = bool(joystick.get_button(2))
-                buttons.y = bool(joystick.get_button(3))
-                buttons.lb = bool(joystick.get_button(4))
-                buttons.rb = bool(joystick.get_button(5))
-                buttons.back = bool(joystick.get_button(6))
-                buttons.start = bool(joystick.get_button(7))
-                buttons.ls = bool(joystick.get_button(8))
-                buttons.rs = bool(joystick.get_button(9))
+        # Standard Xbox controller button mapping
+        if num_buttons >= 10:
+            buttons.a = bool(joystick.get_button(0))
+            buttons.b = bool(joystick.get_button(1))
+            buttons.x = bool(joystick.get_button(2))
+            buttons.y = bool(joystick.get_button(3))
+            buttons.lb = bool(joystick.get_button(4))
+            buttons.rb = bool(joystick.get_button(5))
+            buttons.back = bool(joystick.get_button(6))
+            buttons.start = bool(joystick.get_button(7))
+            buttons.ls = bool(joystick.get_button(8))
+            buttons.rs = bool(joystick.get_button(9))
 
-            # D-pad from hat
-            if joystick.get_numhats() > 0:
-                hat = joystick.get_hat(0)
-                buttons.dpad_left = hat[0] < 0
-                buttons.dpad_right = hat[0] > 0
-                buttons.dpad_up = hat[1] > 0
-                buttons.dpad_down = hat[1] < 0
-
-        except pygame.error as e:
-            logger.error(f"Error reading button state: {e}")
+        # D-pad from hat
+        if joystick.get_numhats() > 0:
+            hat = joystick.get_hat(0)
+            buttons.dpad_left = hat[0] < 0
+            buttons.dpad_right = hat[0] > 0
+            buttons.dpad_up = hat[1] > 0
+            buttons.dpad_down = hat[1] < 0
 
         return buttons
 
@@ -296,33 +278,30 @@ class InputCaptureEngine:
         """
         axes = ControllerState()
 
-        try:
-            num_axes = joystick.get_numaxes()
+        num_axes = joystick.get_numaxes()
 
-            # Standard Xbox controller axis mapping
-            if num_axes >= 2:
-                # Left stick
-                raw_x = joystick.get_axis(0)
-                raw_y = joystick.get_axis(1)
-                axes.left_stick_x = self._apply_dead_zone(raw_x)
-                axes.left_stick_y = -self._apply_dead_zone(raw_y)  # Invert Y axis
+        # Standard Xbox controller axis mapping
+        if num_axes >= 2:
+            # Left stick
+            raw_x = joystick.get_axis(0)
+            raw_y = joystick.get_axis(1)
+            axes.left_stick_x = self._apply_dead_zone(raw_x)
+            axes.left_stick_y = -self._apply_dead_zone(raw_y)  # Invert Y axis
 
-            if num_axes >= 4:
-                # Right stick
-                raw_x = joystick.get_axis(2) if num_axes > 3 else joystick.get_axis(3)
-                raw_y = joystick.get_axis(3) if num_axes > 4 else 0
-                axes.right_stick_x = self._apply_dead_zone(raw_x)
-                axes.right_stick_y = -self._apply_dead_zone(raw_y)  # Invert Y axis
+        if num_axes >= 4:
+            # Right stick
+            raw_x = joystick.get_axis(2) if num_axes > 3 else joystick.get_axis(3)
+            raw_y = joystick.get_axis(3) if num_axes > 4 else 0
+            axes.right_stick_x = self._apply_dead_zone(raw_x)
+            axes.right_stick_y = -self._apply_dead_zone(raw_y)  # Invert Y axis
 
-            if num_axes >= 6:
-                # Triggers (convert from [-1, 1] to [0, 1])
-                raw_lt = joystick.get_axis(4)
-                raw_rt = joystick.get_axis(5)
-                axes.left_trigger = max(0.0, (raw_lt + 1.0) / 2.0)
-                axes.right_trigger = max(0.0, (raw_rt + 1.0) / 2.0)
+        if num_axes >= 6:
+            # Triggers (convert from [-1, 1] to [0, 1])
+            raw_lt = joystick.get_axis(4)
+            raw_rt = joystick.get_axis(5)
+            axes.left_trigger = max(0.0, (raw_lt + 1.0) / 2.0)
+            axes.right_trigger = max(0.0, (raw_rt + 1.0) / 2.0)
 
-        except pygame.error as e:
-            logger.error(f"Error reading axis state: {e}")
 
         return axes
 

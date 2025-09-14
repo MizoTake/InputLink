@@ -1030,9 +1030,8 @@ class EnhancedVirtualControllerCard(QFrame):
         info_layout.addWidget(title_label)
         info_layout.addLayout(details_layout)
         
-        # Connection indicator - simple dot
-        self.connection_indicator = QLabel("●")
-        self.connection_indicator.setStyleSheet(f"color: {theme_manager.get_color('text_secondary')}; font-size: 12px;")
+        # Connection indicator - animated status indicator
+        self.connection_indicator = ConnectionStatusIndicator()
         
         header_layout.addWidget(self.controller_icon)
         header_layout.addLayout(info_layout, 1)

@@ -173,9 +173,6 @@ class TestControllerManager:
         success = self.manager.assign_controller_number("test", 0)
         assert not success
 
-        success = self.manager.assign_controller_number("test", 9)
-        assert not success
-
     def test_controller_number_assignment_nonexistent_controller(self):
         """Should handle nonexistent controller gracefully."""
         success = self.manager.assign_controller_number("nonexistent", 1)
@@ -223,12 +220,12 @@ class TestControllerManager:
         next_num = self.manager._get_next_available_number()
         assert next_num == 2
 
-    def test_next_available_number_all_assigned(self):
-        """Should return None when all numbers are assigned."""
-        self.manager._assigned_numbers = {1, 2, 3, 4, 5, 6, 7, 8}
+    def test_next_available_number_large_numbers(self):
+        """Should handle large controller numbers correctly."""
+        self.manager._assigned_numbers = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 
         next_num = self.manager._get_next_available_number()
-        assert next_num is None
+        assert next_num == 11
 
     @patch("pygame.joystick.quit")
     @patch("pygame.quit")
@@ -241,3 +238,84 @@ class TestControllerManager:
         mock_joystick_quit.assert_called_once()
         mock_pygame_quit.assert_called_once()
         assert not self.manager._initialized
+
+    @patch("pygame.joystick.get_count")
+    @patch("pygame.joystick.Joystick")
+    def test_rescan_controllers_consistency(self, mock_joystick_class, mock_get_count):
+        """Should return consistent results on multiple scans."""
+        # First scan - controller present
+        mock_get_count.return_value = 1
+        mock_joystick = Mock()
+        mock_joystick.get_instance_id.return_value = 1
+        mock_joystick.get_name.return_value = "Test Controller"
+        mock_joystick.get_guid.return_value = "test_guid"
+        mock_joystick.get_numaxes.return_value = 6
+        mock_joystick.get_numbuttons.return_value = 14
+        mock_joystick.get_numhats.return_value = 1
+        mock_joystick_class.return_value = mock_joystick
+
+        with patch.object(self.manager, "initialize"):
+            controllers_first = self.manager.scan_controllers()
+
+        assert len(controllers_first) == 1
+        assert controllers_first[0].state == ControllerConnectionState.CONNECTED
+
+        # Second scan - same controller
+        with patch.object(self.manager, "initialize"):
+            controllers_second = self.manager.scan_controllers()
+
+        assert len(controllers_second) == 1
+        assert controllers_second[0].state == ControllerConnectionState.CONNECTED
+
+        # Connected controllers should be the same
+        connected_first = self.manager.get_connected_controllers()
+        connected_second = self.manager.get_connected_controllers()
+        assert len(connected_first) == 1
+        assert len(connected_second) == 1
+        assert connected_first[0].identifier == connected_second[0].identifier
+
+    @patch("pygame.joystick.get_count")
+    @patch("pygame.joystick.Joystick")
+    def test_controller_disconnect_and_reconnect(self, mock_joystick_class, mock_get_count):
+        """Should handle controller disconnect and reconnect properly."""
+        # First scan - controller present
+        mock_get_count.return_value = 1
+        mock_joystick = Mock()
+        mock_joystick.get_instance_id.return_value = 1
+        mock_joystick.get_name.return_value = "Test Controller"
+        mock_joystick.get_guid.return_value = "test_guid"
+        mock_joystick.get_numaxes.return_value = 6
+        mock_joystick.get_numbuttons.return_value = 14
+        mock_joystick.get_numhats.return_value = 1
+        mock_joystick_class.return_value = mock_joystick
+
+        with patch.object(self.manager, "initialize"):
+            controllers_first = self.manager.scan_controllers()
+
+        assert len(controllers_first) == 1
+        connected_first = self.manager.get_connected_controllers()
+        assert len(connected_first) == 1
+
+        # Second scan - controller disconnected
+        mock_get_count.return_value = 0
+
+        with patch.object(self.manager, "initialize"):
+            controllers_second = self.manager.scan_controllers()
+
+        # Should still have the controller in internal list but marked as disconnected
+        assert len(controllers_second) == 1
+        assert controllers_second[0].state == ControllerConnectionState.DISCONNECTED
+
+        # Connected controllers should be empty
+        connected_second = self.manager.get_connected_controllers()
+        assert len(connected_second) == 0
+
+        # Third scan - controller reconnected
+        mock_get_count.return_value = 1
+
+        with patch.object(self.manager, "initialize"):
+            controllers_third = self.manager.scan_controllers()
+
+        # Should have controller marked as connected again
+        connected_third = self.manager.get_connected_controllers()
+        assert len(connected_third) == 1

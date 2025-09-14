@@ -88,11 +88,8 @@ class SenderApp:
         self.logger.info(f"Updating network settings to {host}:{port}")
         self.config.sender_config.receiver_host = host
         self.config.sender_config.receiver_port = port
-        try:
-            if self.websocket_client:
-                await self.websocket_client.stop()
-        except Exception:
-            pass
+        if self.websocket_client:
+            await self.websocket_client.stop()
         # Recreate client with new settings
         self.websocket_client = WebSocketClient(
             host=self.config.sender_config.receiver_host,
@@ -105,36 +102,26 @@ class SenderApp:
 
     async def start(self) -> None:
         """Start the sender application."""
-        try:
-            self.logger.info("Starting sender application...")
-            # Load configuration
-            await self._load_config()
+        self.logger.info("Starting sender application...")
+        # Load configuration
+        await self._load_config()
 
-            # Update logger with loaded config
-            self.logger.config = self.config
+        # Update logger with loaded config
+        self.logger.config = self.config
 
-            # Initialize components
-            await self._initialize_components()
+        # Initialize components
+        await self._initialize_components()
 
-            # Start services
-            await self._start_services()
+        # Start services
+        await self._start_services()
 
-            self.running = True
-            self.logger.info("Sender application started successfully")
+        self.running = True
+        self.logger.info("Sender application started successfully")
 
-            # Run main loop
-            self._main_task = asyncio.create_task(self._main_loop())
-            await self._main_task
-
-        except asyncio.CancelledError:
-            self.logger.info("Sender application task was cancelled.")
-        except Exception as e:
-            self.logger.error(f"Failed to start sender application: {e}")
-            # In GUI mode, don't exit, just report error
-            if not hasattr(self, 'logger') or self.logger.log_callback is None:
-                sys.exit(1)
-        finally:
-            await self._cleanup()
+        # Run main loop
+        self._main_task = asyncio.create_task(self._main_loop())
+        await self._main_task
+        await self._cleanup()
 
     async def stop(self) -> None:
         """Stop the sender application."""
@@ -146,22 +133,17 @@ class SenderApp:
 
     async def _load_config(self) -> None:
         """Load application configuration."""
-        try:
-            # If config already provided (e.g., from GUI), skip loading from file
-            if self.config is not None:
-                self.logger.info("Using provided configuration (skipping file load)")
-                return
+        # If config already provided (e.g., from GUI), skip loading from file
+        if self.config is not None:
+            self.logger.info("Using provided configuration (skipping file load)")
+            return
 
-            # Create config directory if needed
-            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        # Create config directory if needed
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Load or create config
-            self.config = ConfigModel.load_from_file(self.config_path)
-            self.logger.info(f"Configuration loaded from {self.config_path}")
-
-        except Exception as e:
-            self.logger.error(f"Failed to load configuration: {e}")
-            raise
+        # Load or create config
+        self.config = ConfigModel.load_from_file(self.config_path)
+        self.logger.info(f"Configuration loaded from {self.config_path}")
 
     async def _initialize_components(self) -> None:
         """Initialize application components."""
@@ -208,27 +190,19 @@ class SenderApp:
         self.logger.info(f"Found {len(controllers)} controller(s)")
 
         # Apply explicit controller number assignments from config if provided
-        try:
-            mappings = getattr(self.config.sender_config, "controllers", {})
-            if mappings:
-                for cid, ccfg in mappings.items():
-                    try:
-                        if getattr(ccfg, "enabled", True):
-                            # Assign desired number; will unassign previous owner if needed
-                            self.controller_manager.assign_controller_number(cid, ccfg.assigned_number)
-                        else:
-                            # Disabled: ensure no assignment remains
-                            # Find controller and clear assignment
-                            for c in controllers:
-                                if c.identifier == cid:
-                                    if c.assigned_number:
-                                        # Reassign to None by removing from internal set
-                                        c.assigned_number = None
-                                    break
-                    except Exception as e:
-                        self.logger.error(f"Failed to apply mapping for {cid}: {e}")
-        except Exception as e:
-            self.logger.error(f"Error applying controller mappings: {e}")
+        mappings = getattr(self.config.sender_config, "controllers", {})
+        if mappings:
+            for cid, ccfg in mappings.items():
+                if getattr(ccfg, "enabled", True):
+                    # Assign desired number; will unassign previous owner if needed
+                    self.controller_manager.assign_controller_number(cid, ccfg.assigned_number)
+                else:
+                    # Disabled: ensure no assignment remains
+                    for c in controllers:
+                        if c.identifier == cid:
+                            if c.assigned_number:
+                                c.assigned_number = None
+                            break
 
         for controller in controllers:
             self.logger.info(f"  - {controller.name} (Number: {controller.assigned_number})")
@@ -325,64 +299,44 @@ def main(
 ) -> None:
     """Input Link Sender - Capture and forward controller inputs."""
     if list_controllers:
-        try:
-            from input_link.core import ControllerManager
-            cm = ControllerManager()
-            cm.initialize()
-            controllers = cm.scan_controllers()
-            print(f"Detected {len(controllers)} controller(s):")
-            for c in controllers:
-                print(f"- {c.name} | identifier={c.identifier} | pygame_id={c.pygame_id}")
-            return
-        except Exception as e:
-            print(f"Failed to list controllers: {e}")
-            return
+        from input_link.core import ControllerManager
+        cm = ControllerManager()
+        cm.initialize()
+        controllers = cm.scan_controllers()
+        print(f"Detected {len(controllers)} controller(s):")
+        for c in controllers:
+            print(f"- {c.name} | identifier={c.identifier} | pygame_id={c.pygame_id}")
+        return
     # Create sender app with verbose logging
     app = SenderApp(config_path=config, verbose=verbose)
 
     # Apply CLI overrides by merging with existing config file (if any)
-    try:
-        from input_link.models import ControllerConfig, SenderConfig, ReceiverConfig
+    from input_link.models import ControllerConfig, SenderConfig, ReceiverConfig
 
-        cfg_path = config or (Path.home() / ".input-link" / "config.json")
-        base_cfg = ConfigModel.load_from_file(cfg_path)
+    cfg_path = config or (Path.home() / ".input-link" / "config.json")
+    base_cfg = ConfigModel.load_from_file(cfg_path)
 
-        # Network overrides
-        if host and host != base_cfg.sender_config.receiver_host:
-            base_cfg.sender_config.receiver_host = host
-        if port and port != base_cfg.sender_config.receiver_port:
-            base_cfg.sender_config.receiver_port = port
+    # Network overrides
+    if host and host != base_cfg.sender_config.receiver_host:
+        base_cfg.sender_config.receiver_host = host
+    if port and port != base_cfg.sender_config.receiver_port:
+        base_cfg.sender_config.receiver_port = port
 
-        # Controller mapping overrides
-        for m in controller_map:
-            try:
-                key, num_str = m.split(":", 1)
-                num = int(num_str)
-                if num < 1 or num > 8:
-                    raise ValueError("number out of range 1-8")
-                base_cfg.sender_config.controllers[key] = ControllerConfig(
-                    assigned_number=num,
-                    enabled=True,
-                )
-            except Exception as e:
-                print(f"Ignoring invalid --controller-map '{m}': {e}")
-
-        app.config = base_cfg
-    except Exception as e:
-        # If anything goes wrong, fall back to minimal inline config
-        app.config = ConfigModel(
-            sender_config=SenderConfig(receiver_host=host, receiver_port=port),
-            receiver_config=ReceiverConfig(),
+    # Controller mapping overrides
+    for m in controller_map:
+        key, num_str = m.split(":", 1)
+        num = int(num_str)
+        if num < 1 or num > 8:
+            raise ValueError("number out of range 1-8")
+        base_cfg.sender_config.controllers[key] = ControllerConfig(
+            assigned_number=num,
+            enabled=True,
         )
 
+    app.config = base_cfg
+
     # Run application
-    try:
-        asyncio.run(app.start())
-    except KeyboardInterrupt:
-        app.logger.info("Application stopped by user")
-    except Exception as e:
-        app.logger.error(f"Application failed: {e}")
-        sys.exit(1)
+    asyncio.run(app.start())
 
 
 if __name__ == "__main__":
