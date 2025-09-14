@@ -82,14 +82,10 @@ class ControllerManager:
         if self._initialized:
             return
 
-        try:
-            pygame.init()
-            pygame.joystick.init()
-            self._initialized = True
-            logger.info("Controller manager initialized successfully")
-        except pygame.error as e:
-            logger.error(f"Failed to initialize pygame: {e}")
-            raise RuntimeError(f"Failed to initialize controller system: {e}") from e
+        pygame.init()
+        pygame.joystick.init()
+        self._initialized = True
+        logger.info("Controller manager initialized successfully")
 
     def scan_controllers(self) -> List[DetectedController]:
         """Scan for connected controllers."""
@@ -103,40 +99,35 @@ class ControllerManager:
         logger.debug(f"Found {joystick_count} joystick(s)")
 
         for i in range(joystick_count):
-            try:
-                joystick = pygame.joystick.Joystick(i)
+            joystick = pygame.joystick.Joystick(i)
 
-                # Get device instance ID (unique per session)
-                device_id = joystick.get_instance_id()
+            # Get device instance ID (unique per session)
+            device_id = joystick.get_instance_id()
 
-                controller = DetectedController(
-                    pygame_id=i,
-                    device_id=device_id,
-                    name=joystick.get_name(),
-                    guid=joystick.get_guid(),
-                    num_axes=joystick.get_numaxes(),
-                    num_buttons=joystick.get_numbuttons(),
-                    num_hats=joystick.get_numhats(),
-                )
+            controller = DetectedController(
+                pygame_id=i,
+                device_id=device_id,
+                name=joystick.get_name(),
+                guid=joystick.get_guid(),
+                num_axes=joystick.get_numaxes(),
+                num_buttons=joystick.get_numbuttons(),
+                num_hats=joystick.get_numhats(),
+            )
 
-                # Set recommended input method
-                controller.preferred_input_method = controller.get_recommended_input_method()
+            # Set recommended input method
+            controller.preferred_input_method = controller.get_recommended_input_method()
 
-                # Auto-assign number if enabled and not already assigned
-                if (self._auto_assign_numbers and
-                    controller.identifier not in [c.identifier for c in self._controllers.values()]):
-                    controller.assigned_number = self._get_next_available_number()
-                    if controller.assigned_number:
-                        self._assigned_numbers.add(controller.assigned_number)
+            # Auto-assign number if enabled and not already assigned
+            if (self._auto_assign_numbers and
+                controller.identifier not in [c.identifier for c in self._controllers.values()]):
+                controller.assigned_number = self._get_next_available_number()
+                if controller.assigned_number:
+                    self._assigned_numbers.add(controller.assigned_number)
 
-                current_controllers[i] = controller
-                self._device_id_to_pygame_id[device_id] = i
+            current_controllers[i] = controller
+            self._device_id_to_pygame_id[device_id] = i
 
-                logger.info(f"Detected controller: {controller.name} (ID: {device_id})")
-
-            except pygame.error as e:
-                logger.error(f"Error accessing joystick {i}: {e}")
-                continue
+            logger.info(f"Detected controller: {controller.name} (ID: {device_id})")
 
         # Update controller list
         old_controllers = set(self._controllers.keys())
@@ -148,8 +139,18 @@ class ControllerManager:
                 self._controllers[pygame_id].state = ControllerConnectionState.DISCONNECTED
                 logger.info(f"Controller disconnected: {self._controllers[pygame_id].name}")
 
-        # Add or update controllers
-        self._controllers.update(current_controllers)
+        # Add or update controllers, preserving existing state and assigned numbers
+        for pygame_id, new_controller in current_controllers.items():
+            if pygame_id in self._controllers:
+                # Preserve existing assigned number and state
+                existing_controller = self._controllers[pygame_id]
+                new_controller.assigned_number = existing_controller.assigned_number
+                new_controller.state = ControllerConnectionState.CONNECTED
+            else:
+                # New controller - ensure it's marked as connected
+                new_controller.state = ControllerConnectionState.CONNECTED
+
+            self._controllers[pygame_id] = new_controller
 
         return list(self._controllers.values())
 

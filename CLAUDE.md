@@ -4,23 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Common Development Commands
 
-### Building and Running
+### Setup and Installation
 ```bash
-# Build executables for current platform
-make build
+# Install development dependencies
+make install-dev
 
-# Run applications
-make run-sender
-make run-receiver
-make run-gui         # Run GUI application
-
-# Clean build artifacts
-make clean
-
-# Alternative entry points
-python main.py gui     # Unified entry point for GUI
-python main.py sender  # CLI sender
-python main.py receiver # CLI receiver
+# Install package in development mode
+make install
 ```
 
 ### Testing
@@ -32,307 +22,240 @@ make test
 make test-cov
 
 # Run specific test categories
-pytest -m unit
-pytest -m integration
+pytest -m unit        # Unit tests
+pytest -m integration # Integration tests
+pytest -m e2e         # End-to-end tests
+
+# Run single test file
+pytest tests/unit/test_controller_manager.py -v
+
+# Run with asyncio debugging
+pytest tests/ -v --log-level=DEBUG
 ```
 
-### Development Tools
+### Code Quality
 ```bash
-# Install development dependencies
-make install-dev
+# Lint code
+make lint           # Run ruff check and mypy
 
-# Format and lint code
-make format lint
+# Format code
+make format         # Run black and isort
 
-# Type checking
-mypy src
+# Combined check
+make check          # Run lint and test
 ```
 
-## Project Structure
+### Running Applications
+```bash
+# CLI applications (development)
+make run-sender
+make run-receiver
+make run-gui
 
-```
-src/input_link/              # Main package
-├── __init__.py              # Package version and metadata
-├── models/                  # Pydantic data models
-│   ├── __init__.py         # Model exports  
-│   ├── controller.py       # ControllerInputData, ButtonState, ControllerState
-│   └── config.py           # ConfigModel, SenderConfig, ReceiverConfig
-├── core/                   # Controller detection and input capture
-│   ├── __init__.py         # Core exports
-│   ├── controller_manager.py  # ControllerManager, DetectedController
-│   └── input_capture.py    # InputCaptureEngine
-├── network/                # WebSocket communication
-│   ├── __init__.py         # Network exports
-│   ├── message_protocol.py # NetworkMessage, MessageType
-│   ├── websocket_client.py # WebSocketClient
-│   └── websocket_server.py # WebSocketServer
-├── virtual/                # Virtual controller management
-│   ├── __init__.py         # Virtual controller exports
-│   ├── base.py             # VirtualController, VirtualControllerFactory
-│   ├── windows.py          # WindowsVirtualController (vgamepad)
-│   ├── macos.py            # MacOSVirtualController (keyboard simulation)
-│   └── controller_manager.py # VirtualControllerManager
-├── gui/                    # GUI applications (Apple HIG compliant)
-│   ├── __init__.py         # GUI component exports
-│   ├── application.py      # InputLinkApplication, AsyncWorker
-│   ├── main_window.py      # MainWindow, ModernButton, StatusCard
-│   ├── sender_window.py    # SenderWindow, ControllerCard
-│   └── receiver_window.py  # ReceiverWindow, VirtualControllerCard
-└── apps/                   # Application entry points
-    ├── __init__.py         # App exports
-    ├── sender.py           # SenderApp CLI with callback support
-    ├── receiver.py         # ReceiverApp CLI with callback support
-    ├── gui_main.py         # Unified GUI entry point
-    ├── gui_sender.py       # GUI-specific sender entry
-    └── gui_receiver.py     # GUI-specific receiver entry
+# Unified entry point
+python main.py gui                 # GUI application
+python main.py sender [OPTIONS]    # CLI sender
+python main.py receiver [OPTIONS]  # CLI receiver
 
-build/                      # Build system
-├── build.py                # Python build script
-├── build.bat              # Windows build script
-├── build.sh               # macOS/Linux build script
-└── installer/             # Installer creation
-    ├── windows_installer.nsi    # NSIS installer script
-    └── create_macos_dmg.py     # DMG creation script
+# Module execution
+python -m input_link.apps.sender
+python -m input_link.apps.receiver
+python -m input_link.apps.gui_main
 
-tests/                      # Test suite
-├── unit/                   # Unit tests
-│   ├── test_models.py      # Data model tests
-│   ├── test_controller_manager.py # Controller system tests
-│   ├── test_input_capture.py # Input capture tests
-│   ├── test_network.py     # Network communication tests
-│   └── test_virtual.py     # Virtual controller tests
-├── integration/            # Integration tests
-└── e2e/                   # End-to-end tests
-
-.kiro/specs/               # Original specifications
-├── design.md              # Architecture design document
-├── requirements.md        # User stories and requirements
-└── tasks.md              # Implementation task breakdown
+# Test controller detection
+python main.py sender --list-controllers
 ```
 
-## Architecture Overview
+### Building
+```bash
+# Build executables for current platform
+make build
 
-**Input Link** is a Network Controller Forwarding System that captures controller inputs on a sender PC and transmits them over WebSocket to a receiver PC for virtual controller simulation.
+# Platform-specific builds
+make build-windows  # Windows only
+make build-macos    # macOS only
 
-### Key Components
+# Clean build artifacts
+make clean
+```
 
-1. **Data Models** (`models/`):
-   - `ControllerInputData`: Validated controller input with Pydantic v2
-   - `ConfigModel`: JSON configuration with cross-platform settings
-   - Strict validation ensures data integrity
+## Project Architecture
 
-2. **Controller System** (`core/`):
+**Input Link** is a Network Controller Forwarding System that captures gamepad inputs on a sender PC and forwards them via WebSocket to a receiver PC for virtual controller simulation.
+
+### Core Components
+
+1. **Data Models** (`src/input_link/models/`):
+   - `ControllerInputData`: Pydantic v2 validated controller input
+   - `ConfigModel`: JSON configuration with CLI parameter override support
+
+2. **Controller System** (`src/input_link/core/`):
    - `ControllerManager`: Cross-platform controller detection via pygame
-   - `InputCaptureEngine`: Real-time input polling (60Hz) with dead zone handling
-   - Xbox/PlayStation controller auto-detection
+   - `InputCaptureEngine`: Real-time 60Hz input polling with dead zone handling
 
-3. **Network Layer** (`network/`):
+3. **Network Layer** (`src/input_link/network/`):
    - `WebSocketClient`: Async client with automatic reconnection
    - `WebSocketServer`: Multi-client async server
    - `NetworkMessage`: Typed message protocol with JSON serialization
 
-4. **Virtual Controllers** (`virtual/`):
+4. **Virtual Controllers** (`src/input_link/virtual/`):
    - `VirtualControllerFactory`: Platform-specific controller creation
-   - `WindowsVirtualController`: ViGEm/vgamepad integration
+   - `WindowsVirtualController`: ViGEm/vgamepad integration (Xbox 360 emulation)
    - `MacOSVirtualController`: Keyboard simulation fallback
    - `VirtualControllerManager`: Multi-controller lifecycle management
 
-5. **Applications** (`apps/` & `gui/`):
-   - **CLI Applications**: `SenderApp` and `ReceiverApp` with async architecture
-   - **GUI Applications**: Apple HIG-compliant PySide6 interface
-   - **Unified Entry Point**: `main.py` with subcommands for CLI/GUI modes
-   - **Callback Architecture**: CLI apps support log/status callbacks for GUI integration
+5. **Applications** (`src/input_link/apps/` & `src/input_link/gui/`):
+   - CLI Applications: `SenderApp` and `ReceiverApp` with callback support
+   - GUI Applications: Apple HIG-compliant PySide6 interface
+   - Unified entry point via `main.py` with subcommands
 
-### Data Flow
+### Key Architecture Patterns
 
-1. **Sender**: Pygame captures controller inputs → InputCaptureEngine processes → WebSocketClient transmits
-2. **Network**: JSON messages over WebSocket with automatic reconnection
-3. **Receiver**: WebSocketServer receives → VirtualControllerManager creates virtual controllers → Platform-specific simulation
+- **Async/Await**: All I/O operations use asyncio
+- **Factory Pattern**: Platform-specific virtual controller creation
+- **Observer Pattern**: Status updates via callbacks and Qt signals
+- **Dependency Injection**: Components accept callbacks for testability
 
 ### Technology Stack
 
-**Core Framework**:
-- **Python 3.8+**: Cross-platform compatibility
-- **pygame**: Controller input capture
-- **websockets**: Async WebSocket communication  
-- **pydantic v2**: Data validation and serialization
-- **asyncio**: Async architecture throughout
+**Core**:
+- Python 3.8+ with asyncio
+- pygame (controller input)
+- websockets (async WebSocket)
+- pydantic v2 (data validation)
 
 **Platform Integration**:
-- **vgamepad** (Windows): ViGEm virtual controller integration
-- **pynput**: macOS keyboard simulation
-- **PySide6**: Cross-platform GUI framework (Qt-based)
+- vgamepad (Windows virtual controllers via ViGEm)
+- pynput (macOS keyboard simulation)
+- PySide6 (cross-platform Qt GUI)
 
-**Development Tools**:
-- **click**: CLI interface framework
-- **pytest**: Test framework with async support
-- **PyInstaller**: Executable creation
-- **black/isort/ruff**: Code formatting and linting
-- **mypy**: Static type checking
+**Development**:
+- pytest with asyncio support
+- black/isort/ruff (code quality)
+- mypy (static type checking)
+- PyInstaller (executable creation)
 
-### Platform Support
+## Development Workflows
 
-**Windows**:
-- Virtual controllers via ViGEm Bus Driver (Xbox 360 emulation)
-- DirectInput and XInput support
-- Executable builds: `InputLink-Sender.exe`, `InputLink-Receiver.exe`, `InputLink-GUI.exe`
-- NSIS installer available
+### Adding New Features
+1. Create feature branch from `master`
+2. Implement with proper type hints and async patterns
+3. Add unit tests in `tests/unit/`
+4. Update integration tests if needed
+5. Run `make check` to validate
+6. Submit PR to `master`
 
-**macOS**:  
-- Keyboard simulation for virtual input (no driver required)
-- App bundle creation (.app files) with DMG installer
-- Accessibility permissions required for input simulation
+### Working with Controllers
+- Physical controllers detected via pygame
+- Controller identification uses stable identifiers (GUID + device_id format)
+- Input polling at 60Hz with dead zone handling in `InputCaptureEngine`
+- Multiple controllers supported (no internal limit, OS-dependent)
+- Auto-assignment of controller numbers with `_get_next_available_number()`
+- Controller state tracking through `ControllerConnectionState` enum
 
-## GUI Architecture
+### Working with Virtual Controllers
+- Windows: Uses ViGEm Bus Driver for Xbox 360 emulation via `vgamepad`
+- macOS: Keyboard simulation (WASD + space) via `pynput`
+- Auto-creation up to configured maximum in `VirtualControllerManager`
+- 1:1 mapping from sender controller numbers to receiver virtual controllers
+- Factory pattern implementation in `VirtualControllerFactory.create_controller()`
 
-### Apple HIG Compliance
-- **Design System**: Follows Apple Human Interface Guidelines for consistency
-- **Color Palette**: Apple system colors (#007AFF, #34C759, #FF3B30, etc.)
-- **Typography**: San Francisco font system (-apple-system stack)
-- **Layout**: Proper spacing (16-24px), rounded corners (8-12px), visual hierarchy
+### Configuration Management
+- Default location: `~/.input-link/config.json`
+- Auto-generated with sensible defaults
+- CLI parameters override config file
+- Pydantic v2 validation with `ConfigModel`, `SenderConfig`, `ReceiverConfig`
+- Runtime config injection into CLI apps via `config` attribute
 
-### GUI Components
-- **MainWindow**: Application overview with status cards and navigation
-- **SenderWindow**: Controller detection, configuration, and capture controls
-- **ReceiverWindow**: Virtual controller management and server status
-- **ModernButton**: Apple HIG-compliant button styles (primary, secondary, destructive)
-- **StatusCard**: Real-time status display with color-coded states
-- **ControllerCard**: Individual controller management with enable/disable toggles
-
-### Threading Architecture
-- **Main Thread**: Qt GUI event loop
-- **AsyncWorker Thread**: Separate thread with asyncio event loop for backend operations
-- **Signal/Slot Communication**: Qt signals for thread-safe GUI updates
-- **Graceful Shutdown**: Proper cleanup of async tasks and resources
-
-### Integration Patterns
-- **Callback Architecture**: CLI apps (`SenderApp`, `ReceiverApp`) support callback functions
-- **Status Updates**: Real-time status propagation from backend to GUI
-- **Log Integration**: Centralized logging with GUI display
-- **Window Management**: Multi-window navigation with proper state management
-
-## Build System
-
-### PyInstaller Configuration
-- One-file executables with embedded dependencies
-- Hidden imports for dynamic modules (pygame, websockets, vgamepad, PySide6)
-- Platform-specific exclusions to reduce size (PyQt5/6, tkinter, matplotlib)
-- Icon support and console/GUI mode selection (automatic GUI detection)
-- Three executables generated: Sender, Receiver, and unified GUI application
-
-### Cross-Platform Building
-- GitHub Actions for automated builds
-- Platform-specific scripts (build.bat, build.sh)
-- Make targets for development workflow
-- Installer creation (NSIS for Windows, DMG for macOS)
-
-### Distribution
-- Standalone executables with no Python dependency
-- Installers include driver setup (ViGEm on Windows)
-- Code signing preparation (certificates not included)
+### GUI Development
+- Apple HIG-compliant design system with specific color palette
+- PySide6 (Qt) with proper threading via `AsyncWorker` on separate thread
+- Signal/slot communication for thread-safe GUI updates
+- Multi-window navigation with `QStackedWidget`
+- Real-time status updates via callback architecture
 
 ## Testing Strategy
 
-### Test Categories
-- **Unit tests**: Individual component testing with mocks
-- **Integration tests**: Cross-component interaction testing
-- **E2E tests**: Full system workflow testing
+- **Unit Tests**: Fast component testing with mocks (`tests/unit/`)
+  - Mock pygame joystick objects for controller manager tests
+  - Mock websocket connections for network layer tests
+  - Pydantic model validation testing
+- **Integration Tests**: Cross-component interaction (`tests/integration/`)
+  - WebSocket client/server communication
+  - Controller manager + input capture integration
+- **E2E Tests**: Full workflow testing (`tests/e2e/`)
+  - Complete sender -> receiver workflow
+- **Test Markers**: Use `pytest -m unit|integration|e2e|slow|asyncio`
+- **Async Testing**: Tests use `pytest-asyncio` for async/await patterns
 
-### Test Tools
-- pytest with asyncio support
-- Mock/patch for external dependencies  
-- Temporary file fixtures for configuration testing
-- Coverage reporting with pytest-cov
+## Important Notes
 
-### CI/CD
-- GitHub Actions for cross-platform testing
-- Automated releases on git tags
-- Artifact upload for Windows/macOS builds
+### Platform Considerations
+- Windows requires ViGEm Bus Driver for virtual controllers
+- macOS requires accessibility permissions for input simulation
+- Cross-platform pygame controller support
 
-## Application Entry Points
+### Network Protocol
+- JSON messages over WebSocket
+- Automatic reconnection with exponential backoff
+- Multi-client server support
 
-### Unified Entry Point
-```bash
-python main.py                    # Show usage information
-python main.py --version          # Show version
-python main.py gui                # Launch GUI application
-python main.py sender [OPTIONS]   # CLI sender with options
-python main.py receiver [OPTIONS] # CLI receiver with options
-```
+### Build System
+- PyInstaller creates standalone executables
+- Three builds: Sender, Receiver, unified GUI
+- Platform-specific installers (NSIS/DMG)
+- GitHub Actions for automated releases
 
-### Direct Module Execution
-```bash
-# CLI applications (for development)
-python -m input_link.apps.sender
-python -m input_link.apps.receiver
+## Key Implementation Patterns
 
-# GUI applications (for development/testing)
-python -m input_link.apps.gui_main
-python -m input_link.gui.application
-```
+### Async Architecture
+- All I/O operations use `asyncio` for non-blocking execution
+- WebSocket client has automatic reconnection with exponential backoff
+- Message queuing with bounded `_LenQueue` wrapper around `asyncio.Queue`
+- Proper async context managers (`__aenter__`/`__aexit__`)
 
-### Built Executables
-```bash
-# Windows
-.\dist\InputLink-GUI.exe        # Unified GUI application
-.\dist\InputLink-Sender.exe     # CLI sender
-.\dist\InputLink-Receiver.exe   # CLI receiver
+### Error Handling & Logging
+- Centralized logging via `setup_application_logging()`
+- Callback-based logging integration for GUI apps
+- Graceful error handling with try/catch blocks
+- Connection state tracking with status callbacks
 
-# macOS
-./dist/InputLink-GUI.app        # GUI application bundle
-./dist/InputLink-Sender.app     # Sender app bundle  
-./dist/InputLink-Receiver.app   # Receiver app bundle
-```
+### Data Validation
+- Pydantic v2 models with strict validation (`validate_assignment=True`)
+- Field validators for clamping controller input values (triggers, sticks)
+- JSON serialization/deserialization built into models
+- Configuration validation with CLI parameter override support
 
-### Configuration Files
-- Default location: `~/.input-link/config.json`
-- Auto-generated on first run with sensible defaults
-- CLI parameters override config file settings
-- JSON schema validation via Pydantic models
+### Threading & GUI Integration
+- `AsyncWorker` thread runs separate asyncio event loop
+- Qt signals/slots for thread-safe communication
+- `_schedule()` method for running coroutines on worker thread
+- Proper cleanup in `_on_about_to_quit()` handler
 
-## Development Notes
+### Controller Management
+- Stable controller identification via `f"{guid}_{device_id}"`
+- Auto-assignment with `_get_next_available_number()` (no fixed upper bound)
+- Controller type detection (`is_xbox_controller()`, `is_playstation_controller()`)
+- Dynamic controller mapping with live updates during runtime
 
-### Architecture Patterns
-- **Async/Await**: All I/O operations use asyncio for non-blocking execution
-- **Dependency Injection**: Components accept callbacks/dependencies for testability
-- **Factory Pattern**: Platform-specific virtual controller creation
-- **Observer Pattern**: Status updates via callbacks and Qt signals
-- **Model-View Separation**: Core logic separate from GUI presentation
+### Network Protocol
+- Typed message protocol via `NetworkMessage` class
+- JSON-based serialization with message type identification
+- Client connection state tracking and auto-reconnection
+- Server supports multiple concurrent clients
 
-### Key Implementation Details
-- **Thread Safety**: Qt signals/slots ensure thread-safe GUI updates
-- **Error Handling**: Comprehensive try/catch with graceful degradation
-- **Resource Management**: Proper cleanup of async tasks, threads, and hardware
-- **Input Polling**: 60Hz polling rate with dead zone handling for controllers
-- **Network Resilience**: Automatic WebSocket reconnection with exponential backoff
+### Virtual Controller Patterns
+- Platform-specific factory pattern for controller creation
+- Lifecycle management with creation/destruction callbacks
+- Auto-creation of virtual controllers on-demand
+- State synchronization with input data validation
 
-### Common Development Patterns
-```python
-# Adding new callback support to CLI apps
-class MyApp:
-    def __init__(self, log_callback=None, status_callback=None):
-        self._log_callback = log_callback
-        self._status_callback = status_callback
+## Coding Rules
 
-# GUI-backend integration via AsyncWorker
-@Slot()
-def my_gui_action(self):
-    self.async_worker.do_something()
-
-# Pydantic v2 model definition
-class MyModel(BaseModel):
-    field: str = Field(..., min_length=1)
-    model_config = ConfigDict(validate_assignment=True)
-```
-
-### Code Quality Tools
-- **black**: Code formatting
-- **isort**: Import organization  
-- **ruff**: Fast linting and static analysis
-- **mypy**: Static type checking
-
-### Configuration Management
-- JSON files in ~/.input-link/ directory
-- CLI parameter overrides
-- Platform-specific settings with validation
-- Automatic config creation with sensible defaults
+### Error Handling
+- **Do NOT use try-catch blocks** - This is a strict coding rule for this project
+- Use alternative error handling patterns such as:
+  - Return value checking
+  - Status codes or result objects
+  - Early returns with validation
+  - Optional/Result type patterns where applicable

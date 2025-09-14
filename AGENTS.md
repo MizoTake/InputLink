@@ -1,34 +1,37 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Source code lives in `src/input_link/` with subpackages: `core/` (logic, I/O), `network/` (WebSocket client/server), `gui/` (PySide6 UI), `apps/` (CLI/GUI entry modules), `virtual/` (platform adapters), and `models/` (Pydantic configs, data models).
-- Tests are in `tests/`: `tests/unit/` for fast logic tests, `tests/integration/` for end‑to‑end flows.
-- Entry points: `main.py` (CLI group) and console scripts `input-link-sender` and `input-link-receiver`.
+- Source lives in `src/input_link/` with subpackages: `apps/` (CLI/GUI entry), `core/` (input, control, logging), `gui/` (PySide6 UI), `models/` (Pydantic configs), `network/` (WebSocket), `virtual/` (OS adapters).
+- Entrypoints: console scripts `input-link-sender`, `input-link-receiver`; CLI aggregator `main.py`.
+- Tests in `tests/` (`unit/`, `integration/`, `e2e/`). Docs in `docs/`. Build helpers in `build/` (`build.sh`, `build.bat`).
 
 ## Build, Test, and Development Commands
-- `make install-dev` — Install package with dev/test/build extras.
-- `make test` / `make test-cov` — Run pytest (with or without coverage HTML report).
-- `make lint` — Run `ruff` on `src` and `tests`, then `mypy` on `src`.
-- `make format` — Apply `black` and `isort` to `src` and `tests`.
-- `make run-sender` / `make run-receiver` / `make run-gui` — Launch apps locally.
-- Examples: `python main.py sender --host 127.0.0.1 --port 8765`, `python -m input_link.apps.gui_main`.
+- `make install-dev` — editable install with dev/test/build extras.
+- `make test` / `make test-cov` — run pytest; `test-cov` also writes HTML coverage.
+- `make lint` — `ruff` (src/tests) then `mypy --strict` (src).
+- `make format` — `black` + `isort` over `src` and `tests`.
+- Run apps: `make run-sender`, `make run-receiver`, `make run-gui`.
+- Examples: `python -m input_link.apps.sender --host 127.0.0.1 --port 8765`, `python main.py receiver --port 9000`.
 
 ## Coding Style & Naming Conventions
-- Formatting: `black` (line length 100) and `isort` (profile=black). Linting via `ruff`. Static typing is enforced with `mypy --strict`.
-- Indentation: 4 spaces. Typing: add type hints to public functions and new code.
-- Naming: packages/modules `snake_case`, classes `PascalCase`, functions/vars `snake_case`, constants `UPPER_SNAKE_CASE`.
+- Python ≥ 3.8; 4‑space indentation; add type hints for new/changed code.
+- Formatting: `black` (line length 100) and `isort` (profile=black).
+- Linting: `ruff`; Typing: `mypy --strict`.
+- Names: packages/modules `snake_case`; classes `PascalCase`; functions/vars `snake_case`; constants `UPPER_SNAKE_CASE`.
 
 ## Testing Guidelines
-- Framework: `pytest` with markers (`unit`, `integration`, `asyncio`, etc.). Test discovery: files `test_*.py`, classes `Test*`, functions `test_*`.
-- Run subsets: `pytest -m unit`, `pytest tests/integration -v`.
-- Aim for meaningful coverage on changed paths; use `make test-cov` to verify.
+- Framework: `pytest` with markers: `unit`, `integration`, `e2e`, `asyncio`, `slow`.
+- Discovery: files `test_*.py`, classes `Test*`, functions `test_*`.
+- Run subsets: `pytest -m unit` or `pytest tests/integration -v`.
+- Prefer fast unit tests; isolate I/O via fakes/mocks; use `pytest-asyncio` for async code.
 
 ## Commit & Pull Request Guidelines
-- Use Conventional Commits: `feat/core: …`, `fix/network: …`, `docs: …`, `test: …`. Prefer scopes from: `core|network|gui|virtual|apps|tests|models`.
-- Commits: imperative mood, concise subject, helpful body for nontrivial changes.
-- PRs: include what/why, linked issues, test plan, and screenshots for GUI changes. Keep diffs focused.
+- Conventional Commits. Scopes: `core|network|gui|virtual|apps|models|tests|docs`.
+- Examples: `feat(network): add reconnect backoff`, `fix(gui): prevent freeze on close`.
+- PRs include what/why, linked issues, and a test plan; add screenshots/GIFs for GUI changes.
+- Ensure CI passes: at minimum `make lint && make test` (or `make check` if available).
 
 ## Security & Configuration Tips
-- Windows-only dependency `vgamepad` powers virtual controllers; GUI requires `PySide6`. Install via `make install-dev`.
-- Use `--config <path>` with sender/receiver to load settings. Do not commit secrets; prefer local config files ignored by VCS.
+- Windows-only virtual gamepad uses `vgamepad`; GUI requires `PySide6`. Install via `make install-dev`.
+- Keep secrets out of VCS. Use `src/input_link/models/config.py`; pass configs with `--config <path>` when supported.
 

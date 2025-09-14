@@ -1,29 +1,16 @@
 # Input Link
 
- ローカルネットワーク上で、送信側PCのゲームコントローラー入力を受信側PCへWebSocket経由で転送するシステムです。
-
-## 📚 ドキュメント
-
-詳細なドキュメントは [docs/](docs/) フォルダに整理されています。
-
-- 📖 [ユーザーガイド](docs/user-guide/README.md) - インストールと使用方法
-- 🛠 [開発ガイド](docs/development/) - ビルドと開発環境
-- 🏗 [アーキテクチャ](docs/architecture/) - システム設計
-- 🧪 [テストガイド](docs/testing/) - テスト戦略と実行方法
-- 📋 [仕様書](docs/specifications/) - 詳細仕様
+ローカルネットワーク上で、送信側PCのゲームコントローラー入力を受信側PCへWebSocket経由で転送するシステムです。
 
 ## 特長
 
-- **クロスプラットフォーム対応**（Windows / macOS）
-- **低遅延なリアルタイム入力転送**（60Hz polling）
-- **DInput / XInput コントローラーに対応**
-- **受信側での仮想コントローラー**（Windows: ViGEm / vgamepad）
-- **自動再接続を含む堅牢なWebSocket通信**
-- **複数コントローラーに対応**（内部制限なし。実際の上限はOS/アプリ依存）
-- **Apple HIG準拠のGUI**（PySide6 / Qt）
-- **JSON設定とCLIオプションで柔軟に構成**
-- **コントローラー状態の永続化**（再スキャン時も番号維持）
-- **スマート自動スキャン**（未検出時のみ実行）
+- クロスプラットフォーム対応（Windows / macOS）
+- 低遅延なリアルタイム入力転送
+- DInput / XInput コントローラーに対応
+- 受信側での仮想コントローラー（Windows: ViGEm / vgamepad）
+- 自動再接続を含む堅牢なWebSocket通信
+- 複数コントローラーに対応（内部制限なし。実際の上限はOS/アプリ依存）
+- JSON設定とCLIオプションで柔軟に構成
 
 ## クイックスタート
 
@@ -69,17 +56,13 @@ input-link-receiver --verbose
 
 ```bash
 # リポジトリルートから
-python main.py gui                    # GUIアプリケーション
 python main.py sender --host 127.0.0.1 --port 8765
 python main.py receiver --port 8765 --max-controllers 0
 
-# コントローラー検出テスト
-python main.py sender --list-controllers
-
 # Makeターゲットの利用
-make run-gui            # GUI起動
-make run-sender         # CLI Sender起動
-make run-receiver       # CLI Receiver起動
+make run-sender
+make run-receiver
+make run-gui
 ```
 
 ## ソースからビルド
@@ -120,7 +103,7 @@ make clean
 - Windows: `build\build.bat` または `make build-windows`
 - macOS: `./build/build.sh` または `make build-macos`
 
-詳細は [BUILD.md](docs/development/BUILD.md) を参照してください。
+詳細は [BUILD.md](BUILD.md) を参照してください。
 
 ## アーキテクチャ
 
@@ -145,15 +128,10 @@ make clean
 ```
 
 主なコンポーネント:
-- **GUI**: Apple HIG準拠のPySide6インターフェース
-- **Sender**: pygameで入力取得しWebSocketで送信
-- **Receiver**: 入力を受信し仮想コントローラーへ反映
-- **Controller Manager**: デバイス検出と状態管理（永続化対応）
-- **Input Capture**: 60Hzリアルタイム入力キャプチャ
-- **Models**: Pydantic v2で検証されたデータモデル
-- **Network**: 非同期WebSocket通信と自動再接続処理
-
-詳細は [システム概要](docs/architecture/system-overview.md) を参照してください。
+- Sender: pygameで入力取得しWebSocketで送信
+- Receiver: 入力を受信し仮想コントローラーへ反映
+- Models: Pydanticで検証されたデータモデル
+- Network: 非同期WebSocket通信と再接続処理
 
 ## 対応プラットフォーム
 
@@ -204,8 +182,6 @@ pytest -m integration # 結合テスト
 pytest -m e2e         # E2Eテスト
 ```
 
-詳細なテスト戦略は [テストガイド](docs/testing/test-strategy.md) を参照してください。
-
 ### 手動動作確認（Gamepad）
 
 受信側PC（Windows / XInput / ViGEm）で仮想コントローラーの反映を簡単に確認するには、以下のサイトをブラウザで開いてください。
@@ -240,8 +216,7 @@ make format            # フォーマット適用
 make build             # 実行ファイルのビルド
 make clean             # 生成物のクリーン
 ```
-
-## ローカルネットワークでの利用（他PC接続向け）
+# ローカルネットワークでの利用（他PC接続向け）
 
 同一LAN内の別PCから接続しやすいように、受信側の待受IP（Listen Host）と、送信側の接続先IP（Receiver Host）を個別に設定できます。
 
@@ -288,18 +263,8 @@ input-link-sender \
 
 ### GUIからの設定ポイント
 
-- **送信側（Sender）**
+- 送信側（Sender）
   - Receiver Host / Port / Polling Rate を変更可能
-  - 各コントローラーに対し「Player #（1以上）」を設定
-  - **スマート自動スキャン**: コントローラー未検出時のみ自動実行
-  - **状態永続化**: 再スキャン時も設定を維持
-- **受信側（Receiver）**
+  - 各コントローラーに対し「Enable」と「Player #（1以上）」を設定
+- 受信側（Receiver）
   - Listen Host / Listen Port / Max Controllers / Auto-create Virtual を変更可能
-
-## 最近の改善点
-
-### v1.x.x での主要な修正
-- **🔧 コントローラー状態永続化**: 再スキャン時にassigned numberや状態が失われる問題を修正
-- **⚡ スマート自動スキャン**: Senderウィンドウを開く際、コントローラーが既に検出されている場合は自動スキャンをスキップ
-- **🐛 インデント修正**: `input_capture.py`の構文エラーを修正
-- **🎯 GUI信頼性向上**: 信号の流れを改善し、コントローラーの表示が消える問題を解決
