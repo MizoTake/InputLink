@@ -109,7 +109,16 @@ class InputCaptureEngine:
         while time.monotonic() < end:
             if not self._input_queue.empty():
                 return self._input_queue.get_nowait()
-            time.sleep(0.01)
+            # Use shorter, more precise sleep for polling
+            remaining = end - time.monotonic()
+            if remaining > 0.001:
+                time.sleep(0.001)  # 1ms precision
+            else:
+                # Busy-wait for final microseconds
+                while time.monotonic() < end and self._input_queue.empty():
+                    pass
+                if not self._input_queue.empty():
+                    return self._input_queue.get_nowait()
         return None
 
     def get_current_state(self, controller_id: str) -> Optional[ControllerInputData]:
@@ -174,11 +183,22 @@ class InputCaptureEngine:
                                         "Async input_callback provided but no running event loop set"
                                     )
 
-            # Maintain polling rate
+            # Maintain polling rate with high precision timing
             elapsed = time.perf_counter() - start_time
             sleep_time = max(0, poll_interval - elapsed)
             if sleep_time > 0:
-                time.sleep(sleep_time)
+                # Use busy-wait for sub-millisecond precision when needed
+                if sleep_time > 0.001:  # 1ms threshold
+                    time.sleep(sleep_time - 0.001)
+                    # Busy-wait for the remaining time for precise timing
+                    target_time = start_time + poll_interval
+                    while time.perf_counter() < target_time:
+                        pass
+                else:
+                    # Pure busy-wait for very short sleeps
+                    target_time = start_time + poll_interval
+                    while time.perf_counter() < target_time:
+                        pass
 
     def _capture_controller_input(self, controller: DetectedController) -> Optional[ControllerInputData]:
         """Capture input from a specific controller.

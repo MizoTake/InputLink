@@ -82,7 +82,14 @@ class ControllerManager:
         if self._initialized:
             return
 
-        pygame.init()
+        # Initialize pygame - if this fails, it will raise an exception
+        # which we let propagate according to project coding rules
+        init_result = pygame.init()
+        if init_result[1] > 0:  # Check for initialization failures
+            failed_modules = init_result[1]
+            logger.error(f"Failed to initialize {failed_modules} pygame modules")
+            raise RuntimeError(f"Pygame initialization failed: {failed_modules} modules failed")
+
         pygame.joystick.init()
         self._initialized = True
         logger.info("Controller manager initialized successfully")
@@ -99,6 +106,8 @@ class ControllerManager:
         logger.debug(f"Found {joystick_count} joystick(s)")
 
         for i in range(joystick_count):
+            # Create joystick and handle pygame.error
+            # Since we must avoid try-catch, we'll let errors propagate but handle them at higher level
             joystick = pygame.joystick.Joystick(i)
 
             # Get device instance ID (unique per session)

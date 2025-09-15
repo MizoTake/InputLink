@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "Bash(make test-cov:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest tests/unit/ -v --tb=short)",
+      "Bash(python -m pytest tests/unit/test_network.py::TestWebSocketClient -v)",
+      "Bash(python -m pytest tests/unit/test_input_capture.py -v)",
+      "Bash(python -m pytest tests/unit/ -x --tb=short)",
+      "Bash(python -m pytest tests/unit/test_controller_manager.py::TestControllerManager::test_initialization_failure -v)",
+      "Bash(python -m pytest tests/unit/test_controller_manager.py -v)",
+      "Bash(python -m pytest tests/unit/test_controller_manager.py::TestControllerManager::test_initialization -v)",
+      "Bash(python -m pytest tests/unit/test_controller_manager.py::TestControllerManager::test_scan_controllers_with_error -v)",
+      "Bash(python -m pytest tests/unit/ --tb=short -q)"
     ],
     "deny": [],
     "ask": []

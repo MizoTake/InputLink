@@ -91,6 +91,9 @@ class TestControllerManager:
     @patch("pygame.joystick.init")
     def test_initialization(self, mock_joystick_init, mock_pygame_init):
         """Should initialize pygame correctly."""
+        # Mock pygame.init() to return (success_count, failure_count) with no failures
+        mock_pygame_init.return_value = (7, 0)  # All modules successful
+
         self.manager.initialize()
 
         mock_pygame_init.assert_called_once()
@@ -99,12 +102,12 @@ class TestControllerManager:
 
     @patch("pygame.init")
     @patch("pygame.joystick.init")
-    @patch("pygame.error", Exception)
     def test_initialization_failure(self, mock_joystick_init, mock_pygame_init):
         """Should handle initialization failure."""
-        mock_pygame_init.side_effect = Exception("Pygame init failed")
+        # Mock pygame.init() to return (success_count, failure_count) with failures
+        mock_pygame_init.return_value = (5, 2)  # 5 successful, 2 failed modules
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="Pygame initialization failed: 2 modules failed"):
             self.manager.initialize()
 
     @patch("pygame.joystick.get_count", return_value=2)
@@ -142,15 +145,15 @@ class TestControllerManager:
     @patch("pygame.joystick.get_count", return_value=1)
     @patch("pygame.joystick.Joystick")
     def test_scan_controllers_with_error(self, mock_joystick_class, mock_get_count):
-        """Should handle joystick access errors gracefully."""
+        """Should handle joystick access errors by letting exception propagate."""
         # Mock pygame.error instead of generic Exception
         import pygame
         mock_joystick_class.side_effect = pygame.error("Joystick access failed")
 
         with patch.object(self.manager, "initialize"):
-            controllers = self.manager.scan_controllers()
-
-        assert len(controllers) == 0
+            # According to project rules, errors should propagate instead of being caught
+            with pytest.raises(pygame.error, match="Joystick access failed"):
+                self.manager.scan_controllers()
 
     def test_controller_number_assignment(self):
         """Should assign and manage controller numbers."""

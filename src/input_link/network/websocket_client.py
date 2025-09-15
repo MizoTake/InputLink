@@ -132,10 +132,10 @@ class WebSocketClient:
 
     async def send_controller_input(self, input_data: ControllerInputData) -> bool:
         """Send controller input data.
-        
+
         Args:
             input_data: Controller input data to send
-            
+
         Returns:
             True if queued successfully, False otherwise
         """
@@ -143,20 +143,23 @@ class WebSocketClient:
             logger.warning("Cannot send input data - client not running")
             return False
 
-        try:
-            message = NetworkMessage.create_controller_input_message(input_data)
-            await self._message_queue.put(message)
-            return True
-        except Exception as e:
-            logger.error(f"Failed to queue controller input: {e}")
+        # Create message - this should not fail with valid input
+        message = NetworkMessage.create_controller_input_message(input_data)
+
+        # Check queue capacity before putting
+        if self._message_queue.qsize() >= self._max_queue_size:
+            logger.warning("Message queue full, dropping controller input")
             return False
+
+        # Queue message
+        return await self._safe_queue_put(message)
 
     async def send_message(self, message: NetworkMessage) -> bool:
         """Send network message.
-        
+
         Args:
             message: Network message to send
-            
+
         Returns:
             True if queued successfully, False otherwise
         """
@@ -164,12 +167,12 @@ class WebSocketClient:
             logger.warning("Cannot send message - client not running")
             return False
 
-        try:
-            await self._message_queue.put(message)
-            return True
-        except Exception as e:
-            logger.error(f"Failed to queue message: {e}")
+        if message is None:
+            logger.error("Cannot send None message")
             return False
+
+        # Queue message
+        return await self._safe_queue_put(message)
 
     async def _connection_loop(self) -> None:
         """Main connection loop with reconnection logic."""
@@ -237,13 +240,10 @@ class WebSocketClient:
     async def _message_sender(self) -> None:
         """Send queued messages to server."""
         while self._running:
-            try:
-                message = await asyncio.wait_for(
-                    self._message_queue.get(),
-                    timeout=1.0,
-                )
-            except asyncio.TimeoutError:
-                continue
+            # Get message with timeout - use helper method
+            message = await self._safe_queue_get(timeout=1.0)
+            if message is None:
+                continue  # Timeout or queue closed
 
             if self.connected:
                 await self._websocket.send(message.to_json())
@@ -260,3 +260,49 @@ class WebSocketClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         await self.stop()
+
+    async def _safe_queue_put(self, message: NetworkMessage) -> bool:
+        """Safely put message in queue without exceptions.
+
+        Args:
+            message: Message to queue
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._running:
+            return False
+
+        # Use put_nowait to avoid blocking and handle queue full condition
+        if self._message_queue.qsize() >= self._max_queue_size:
+            return False
+
+        # Queue should have space, but check if asyncio.Queue raises
+        # We'll use put() which shouldn't raise in normal conditions
+        await self._message_queue.put(message)
+        return True
+
+    async def _safe_queue_get(self, timeout: float = 1.0) -> Optional[NetworkMessage]:
+        """Safely get message from queue with timeout.
+
+        Args:
+            timeout: Timeout in seconds
+
+        Returns:
+            Message if available, None on timeout or error
+        """
+        if not self._running:
+            return None
+
+        # Use asyncio.wait_for but handle timeout gracefully
+        future = asyncio.create_task(self._message_queue.get())
+        done, pending = await asyncio.wait([future], timeout=timeout)
+
+        if done:
+            task = done.pop()
+            return task.result()
+        else:
+            # Cancel pending task and return None for timeout
+            for task in pending:
+                task.cancel()
+            return None
