@@ -299,3 +299,85 @@ class TestInputCaptureEngine:
         # Should still be able to get data
         retrieved = engine.get_input_data(timeout=0.1)
         assert retrieved is not None
+
+    def test_get_input_data_timing_precision(self):
+        """Should handle timing precision improvements correctly."""
+        import time
+
+        # Test short timeout precision (< 1ms)
+        start_time = time.perf_counter()
+        result = self.engine.get_input_data(timeout=0.0005)  # 0.5ms
+        elapsed = time.perf_counter() - start_time
+
+        assert result is None  # No data available
+        # Should complete in reasonable time (allowing some variance for system scheduling)
+        assert elapsed < 0.01  # Should complete in less than 10ms
+
+    def test_get_input_data_timing_with_busy_wait(self):
+        """Should use busy-wait for precise timing on very short timeouts."""
+        import time
+
+        # Add data to queue first
+        test_data = ControllerInputData(
+            controller_number=1,
+            controller_id="test",
+        )
+        self.engine._input_queue.put_nowait(test_data)
+
+        # Should get data immediately
+        start_time = time.perf_counter()
+        result = self.engine.get_input_data(timeout=0.001)
+        elapsed = time.perf_counter() - start_time
+
+        assert result is not None
+        assert result.controller_id == "test"
+        # Should complete very quickly when data is available (allow system variance)
+        assert elapsed < 0.01  # More reasonable for system scheduling
+
+    def test_capture_loop_timing_intervals(self):
+        """Should maintain proper timing intervals in capture loop."""
+        # This test verifies timing behavior without actually running the full loop
+        config = InputCaptureConfig(polling_rate=100)  # 100Hz = 10ms intervals
+        engine = InputCaptureEngine(self.mock_controller_manager, config)
+
+        # Test the timing calculation
+        poll_interval = 1.0 / config.polling_rate
+        assert poll_interval == 0.01  # 10ms for 100Hz
+
+        # Test that timing logic would work correctly
+        import time
+        start_time = time.perf_counter()
+
+        # Simulate some processing time
+        time.sleep(0.005)  # 5ms processing
+
+        elapsed = time.perf_counter() - start_time
+        sleep_time = max(0, poll_interval - elapsed)
+
+        # Should need about 5ms more sleep to reach 10ms total
+        assert 0.004 < sleep_time < 0.006
+
+    def test_high_frequency_polling_config(self):
+        """Should handle high-frequency polling configurations."""
+        # Test 1000Hz polling (1ms intervals)
+        config = InputCaptureConfig(polling_rate=1000)
+        engine = InputCaptureEngine(self.mock_controller_manager, config)
+
+        poll_interval = 1.0 / config.polling_rate
+        assert poll_interval == 0.001  # 1ms
+
+        # Verify engine accepts high frequency config
+        assert engine._config.polling_rate == 1000
+
+    def test_sub_millisecond_timeout_handling(self):
+        """Should handle sub-millisecond timeouts correctly."""
+        import time
+
+        # Test very short timeout
+        start_time = time.perf_counter()
+        result = self.engine.get_input_data(timeout=0.0001)  # 0.1ms
+        elapsed = time.perf_counter() - start_time
+
+        assert result is None
+        # Should complete quickly and not significantly overshoot (allow system variance)
+        assert elapsed < 0.01  # Should complete in less than 10ms

@@ -12,7 +12,17 @@
       "Bash(python -m pytest tests/unit/test_controller_manager.py -v)",
       "Bash(python -m pytest tests/unit/test_controller_manager.py::TestControllerManager::test_initialization -v)",
       "Bash(python -m pytest tests/unit/test_controller_manager.py::TestControllerManager::test_scan_controllers_with_error -v)",
-      "Bash(python -m pytest tests/unit/ --tb=short -q)"
+      "Bash(python -m pytest tests/unit/ --tb=short -q)",
+      "Bash(find:*)",
+      "Bash(python -m pytest tests/unit/test_network.py::TestWebSocketClient::test_safe_queue_put_success -v)",
+      "Bash(python -m pytest tests/unit/test_input_capture.py::TestInputCaptureEngine::test_get_input_data_timing_precision -v)",
+      "Bash(python -m pytest tests/unit/test_network.py -k \"safe_queue\" -v)",
+      "Bash(python -m pytest tests/unit/test_input_capture.py -k \"timing\" -v)",
+      "Bash(python -m pytest tests/unit/test_network.py tests/unit/test_input_capture.py tests/unit/test_controller_manager.py -q)",
+      "Bash(python -m pytest tests/unit/test_input_capture.py::TestInputCaptureEngine::test_sub_millisecond_timeout_handling -v)",
+      "Bash(python -m pytest tests/unit/test_network.py tests/unit/test_input_capture.py tests/unit/test_controller_manager.py --tb=short)",
+      "Bash(python -m pytest --collect-only -q tests/unit/test_network.py tests/unit/test_input_capture.py tests/unit/test_controller_manager.py)",
+      "Bash(python -m pytest --collect-only tests/unit/test_network.py tests/unit/test_input_capture.py tests/unit/test_controller_manager.py)"
     ],
     "deny": [],
     "ask": []

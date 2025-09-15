@@ -235,6 +235,95 @@ class TestWebSocketClient:
 
             assert not client._running
 
+    @pytest.mark.asyncio
+    async def test_safe_queue_put_not_running(self):
+        """Should fail to queue when not running."""
+        message = NetworkMessage.create_heartbeat_message()
+
+        result = await self.client._safe_queue_put(message)
+        assert not result
+
+    @pytest.mark.asyncio
+    async def test_safe_queue_put_queue_full(self):
+        """Should fail when queue is full."""
+        # Fill the queue to capacity
+        self.client._running = True
+        message = NetworkMessage.create_heartbeat_message()
+
+        # Fill queue to max capacity
+        for _ in range(self.client._max_queue_size):
+            await self.client._message_queue.put(message)
+
+        # Should fail to add more
+        result = await self.client._safe_queue_put(message)
+        assert not result
+
+    @pytest.mark.asyncio
+    async def test_safe_queue_put_success(self):
+        """Should successfully queue message."""
+        self.client._running = True
+        message = NetworkMessage.create_heartbeat_message()
+
+        result = await self.client._safe_queue_put(message)
+        assert result
+
+        # Verify message was queued
+        queued_message = await self.client._message_queue.get()
+        assert queued_message.message_id == message.message_id
+
+    @pytest.mark.asyncio
+    async def test_safe_queue_get_not_running(self):
+        """Should return None when not running."""
+        result = await self.client._safe_queue_get(timeout=0.1)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_safe_queue_get_timeout(self):
+        """Should return None on timeout."""
+        self.client._running = True
+
+        result = await self.client._safe_queue_get(timeout=0.1)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_safe_queue_get_success(self):
+        """Should return message when available."""
+        self.client._running = True
+        message = NetworkMessage.create_heartbeat_message()
+
+        # Put message in queue
+        await self.client._message_queue.put(message)
+
+        result = await self.client._safe_queue_get(timeout=1.0)
+        assert result is not None
+        assert result.message_id == message.message_id
+
+    @pytest.mark.asyncio
+    async def test_send_controller_input_queue_full_check(self):
+        """Should check queue capacity before queuing controller input."""
+        input_data = ControllerInputData(
+            controller_number=1,
+            controller_id="test",
+        )
+
+        self.client._running = True
+
+        # Fill queue to capacity
+        dummy_message = NetworkMessage.create_heartbeat_message()
+        for _ in range(self.client._max_queue_size):
+            await self.client._message_queue.put(dummy_message)
+
+        success = await self.client.send_controller_input(input_data)
+        assert not success
+
+    @pytest.mark.asyncio
+    async def test_send_message_none_check(self):
+        """Should reject None messages."""
+        self.client._running = True
+
+        success = await self.client.send_message(None)
+        assert not success
+
 
 class TestWebSocketServer:
     """Test WebSocket server."""
