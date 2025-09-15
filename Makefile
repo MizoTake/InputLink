@@ -34,9 +34,9 @@ format: ## Format code
 
 build: ## Build executable files
 ifeq ($(PLATFORM),windows)
-	build\build.bat
+	scripts\build\build.bat
 else
-	./build/build.sh
+	./scripts/build/build.sh
 endif
 
 clean: ## Clean build artifacts
@@ -74,15 +74,15 @@ all: format lint test build ## Format, lint, test, and build
 
 build-windows: ## Build Windows executables (requires Windows)
 ifeq ($(PLATFORM),windows)
-	build\build.bat
+	scripts\build\build.bat
 else
 	@echo "Error: Windows build must be run on Windows platform"
 	@exit 1
 endif
 
-build-macos: ## Build macOS app bundles (requires macOS) 
+build-macos: ## Build macOS app bundles (requires macOS)
 ifeq ($(PLATFORM),darwin)
-	./build/build.sh
+	./scripts/build/build.sh
 else
 	@echo "Error: macOS build must be run on macOS platform"
 	@exit 1

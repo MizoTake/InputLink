@@ -22,7 +22,12 @@
       "Bash(python -m pytest tests/unit/test_input_capture.py::TestInputCaptureEngine::test_sub_millisecond_timeout_handling -v)",
       "Bash(python -m pytest tests/unit/test_network.py tests/unit/test_input_capture.py tests/unit/test_controller_manager.py --tb=short)",
       "Bash(python -m pytest --collect-only -q tests/unit/test_network.py tests/unit/test_input_capture.py tests/unit/test_controller_manager.py)",
-      "Bash(python -m pytest --collect-only tests/unit/test_network.py tests/unit/test_input_capture.py tests/unit/test_controller_manager.py)"
+      "Bash(python -m pytest --collect-only tests/unit/test_network.py tests/unit/test_input_capture.py tests/unit/test_controller_manager.py)",
+      "Bash(chmod:*)",
+      "Bash(python:*)",
+      "Bash(make:*)",
+      "Bash(scripts\\build\\build.bat)",
+      "Bash(cmd //c:*)"
     ],
     "deny": [],
     "ask": []
