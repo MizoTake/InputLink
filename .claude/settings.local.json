@@ -27,7 +27,8 @@
       "Bash(python:*)",
       "Bash(make:*)",
       "Bash(scripts\\build\\build.bat)",
-      "Bash(cmd //c:*)"
+      "Bash(cmd //c:*)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "ask": []
