@@ -102,3 +102,32 @@ ignore = ["S101", "T201", "T203"]
 
 [tool.ruff.per-file-ignores]
 "tests/**/*" = ["S101", "PLR2004", "SLF001"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*", "*Tests"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=src/input_link",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-fail-under=80"
+]
+markers = [
+    "unit: Unit tests that don't require external dependencies",
+    "integration: Integration tests that may require system resources",
+    "e2e: End-to-end tests that require full system setup",
+    "gui: Tests that require GUI/display environment",
+    "slow: Tests that take longer than average to run",
+    "asyncio: Tests that use asyncio functionality"
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
