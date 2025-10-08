@@ -2,6 +2,18 @@
 
  ローカルネットワーク上で、送信側PCのゲームコントローラー入力を受信側PCへWebSocket経由で転送するシステムです。
 
+## ⚠️ 重要: Windows受信側の要件
+
+**Windows PCで受信側（Receiver）として使用する場合、ViGEm Bus Driverが必要です。**
+
+- **ViGEm Bus Driver**: 仮想Xbox 360コントローラーを作成するためのカーネルドライバー
+- **ダウンロード**: https://github.com/ViGEm/ViGEmBus/releases/latest
+- **公式サイト**: https://vigembusdriver.com
+
+インストーラー版を使用する場合、セットアップ時に自動的にViGEmドライバーのインストールが案内されます。
+
+> **注意**: 送信側（Sender）のみで使用する場合は不要です。macOSでは代替のキーボードシミュレーション方式を使用するため、ViGEmは不要です。
+
 ## 📚 ドキュメント
 
 詳細なドキュメントは [docs/](docs/) フォルダに整理されています。
