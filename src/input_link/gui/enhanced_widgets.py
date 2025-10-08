@@ -19,56 +19,70 @@ from input_link.gui.theme_manager import theme_manager
 
 class AnimatedButton(QPushButton):
     """Enhanced button with hover animations and gaming-style effects."""
-    
+
     def __init__(self, text: str, button_type: str = "primary"):
         super().__init__(text)
         self.button_type = button_type
-        self._animation = QPropertyAnimation(self, b"geometry")
-        self._opacity_effect = QGraphicsOpacityEffect()
-        self.setGraphicsEffect(self._opacity_effect)
+        self._scale = 1.0
+        self._animation = QPropertyAnimation(self, b"scale_factor")
         self._setup_style()
         self._setup_animations()
-        
+
         # Connect to theme changes
         theme_manager.theme_changed.connect(self._setup_style)
-    
+
     def _setup_style(self):
         """Setup button styling based on current theme."""
         self.setStyleSheet(theme_manager.get_button_style(self.button_type))
-    
+
     def _setup_animations(self):
         """Setup button animations."""
         self._animation.setDuration(150)
         self._animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-    
+
     def enterEvent(self, event):
         """Handle mouse enter with animation."""
         super().enterEvent(event)
-        self._animate_scale(1.02)
-    
+        self._animation.stop()
+        self._animation.setStartValue(self._scale)
+        self._animation.setEndValue(1.02)
+        self._animation.start()
+
     def leaveEvent(self, event):
         """Handle mouse leave with animation."""
         super().leaveEvent(event)
-        self._animate_scale(1.0)
-    
-    def _animate_scale(self, scale: float):
-        """Animate button scale."""
-        current_geometry = self.geometry()
-        center = current_geometry.center()
-        
-        new_width = int(current_geometry.width() * scale)
-        new_height = int(current_geometry.height() * scale)
-        
-        new_geometry = QRect(
-            center.x() - new_width // 2,
-            center.y() - new_height // 2,
-            new_width,
-            new_height
-        )
-        
-        self._animation.setStartValue(current_geometry)
-        self._animation.setEndValue(new_geometry)
+        self._animation.stop()
+        self._animation.setStartValue(self._scale)
+        self._animation.setEndValue(1.0)
         self._animation.start()
+
+    def get_scale_factor(self):
+        """Get current scale factor."""
+        return self._scale
+
+    def set_scale_factor(self, scale: float):
+        """Set scale factor and trigger repaint."""
+        self._scale = scale
+        self.update()
+
+    scale_factor = Property(float, get_scale_factor, set_scale_factor)
+
+    def paintEvent(self, event):
+        """Custom paint with scale transform."""
+        if self._scale != 1.0:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+            # Apply scale transform from center
+            center = self.rect().center()
+            painter.translate(center)
+            painter.scale(self._scale, self._scale)
+            painter.translate(-center)
+
+            # Draw scaled button
+            super().paintEvent(event)
+        else:
+            super().paintEvent(event)
 
 
 class ConnectionStatusIndicator(QWidget):
