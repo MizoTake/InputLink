@@ -29,7 +29,7 @@ class WindowsVirtualController(VirtualController):
 
     async def connect(self) -> bool:
         """Connect virtual controller using vgamepad.
-        
+
         Returns:
             True if connected successfully, False otherwise
         """
@@ -39,12 +39,17 @@ class WindowsVirtualController(VirtualController):
 
         try:
             import vgamepad as vg
+            logger.info(f"vgamepad module loaded from: {vg.__file__}")
 
             # Create gamepad based on type
             if self.controller_type == "xbox360":
+                logger.info("Creating VX360Gamepad...")
                 self._gamepad = vg.VX360Gamepad()
+                logger.info("VX360Gamepad created successfully")
             elif self.controller_type == "ds4":
+                logger.info("Creating VDS4Gamepad...")
                 self._gamepad = vg.VDS4Gamepad()
+                logger.info("VDS4Gamepad created successfully")
             else:
                 logger.error(f"Unsupported controller type: {self.controller_type}")
                 return False
@@ -57,11 +62,15 @@ class WindowsVirtualController(VirtualController):
 
             return True
 
-        except ImportError:
-            logger.error("vgamepad not available - install with: pip install vgamepad")
+        except ImportError as e:
+            logger.error(f"vgamepad not available - install with: pip install vgamepad. Error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
         except Exception as e:
             logger.error(f"Failed to connect Windows virtual controller: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
 
     async def disconnect(self) -> None:

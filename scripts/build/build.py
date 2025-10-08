@@ -78,14 +78,29 @@ def create_spec_file(
     if platform_name == "windows":
         hidden_imports.extend([
             'vgamepad',
+            'vgamepad.win.vigem_commons',
+            'vgamepad.win.vigem_client',
             'win32api',
             'win32con',
             'win32gui',
             'winsound',
         ])
-    
-    # Build datas list (include any data files)
+
+    # Build datas and binaries list (include any data files and DLLs)
     datas = []
+    binaries = []
+
+    # Add vgamepad DLLs for Windows
+    if platform_name == "windows":
+        try:
+            import vgamepad
+            vgamepad_path = Path(vgamepad.__file__).parent
+            # Include all DLL files from vgamepad package
+            for dll_file in vgamepad_path.rglob("*.dll"):
+                rel_path = dll_file.relative_to(vgamepad_path.parent)
+                binaries.append((str(dll_file), str(rel_path.parent)))
+        except Exception as e:
+            print(f"Warning: Could not locate vgamepad DLLs: {e}")
     
     # Icon path (fix Windows path escaping)
     if icon_path:
@@ -106,7 +121,7 @@ block_cipher = None
 a = Analysis(
     ['{entry_point_norm}'],
     pathex={pathex!r},
-    binaries=[],
+    binaries={binaries!r},
     datas={datas!r},
     hiddenimports={hidden_imports!r},
     hookspath=[],
@@ -124,7 +139,6 @@ a = Analysis(
         'PyQt5',
         'PyQt6',
         'PySide2',
-        'PySide6',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

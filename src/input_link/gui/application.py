@@ -71,9 +71,19 @@ class AsyncWorker(QThread):
         """Run the async event loop in this thread."""
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        self.loop.run_forever()
-        self.loop.run_until_complete(self.loop.shutdown_asyncgens())
-        self.loop.close()
+        try:
+            self.loop.run_forever()
+        finally:
+            # Cancel all pending tasks
+            pending = asyncio.all_tasks(self.loop)
+            for task in pending:
+                task.cancel()
+            # Wait for all tasks to be cancelled
+            if pending:
+                self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            # Shutdown async generators
+            self.loop.run_until_complete(self.loop.shutdown_asyncgens())
+            self.loop.close()
 
     async def _async_stop(self):
         """Async shutdown: stop apps then the loop."""
