@@ -216,11 +216,24 @@ class SenderApp:
         """Main application loop."""
         self.logger.info("Sender running - Press Ctrl+C to stop in CUI mode.")
 
+        scan_interval = 30.0  # Scan for new controllers every 30 seconds
+        last_scan_time = asyncio.get_event_loop().time()
+
         try:
             while self.running:
-                # Periodically scan for new controllers
-                # This might be too noisy for GUI logs
-                # self.controller_manager.scan_controllers()
+                current_time = asyncio.get_event_loop().time()
+
+                # Periodically scan for new/disconnected controllers
+                if current_time - last_scan_time >= scan_interval:
+                    previous_count = len(self.controller_manager.get_connected_controllers())
+                    self.controller_manager.scan_controllers()
+                    current_count = len(self.controller_manager.get_connected_controllers())
+
+                    # Only log if controller count changed
+                    if current_count != previous_count:
+                        self.logger.info(f"Controller count changed: {previous_count} -> {current_count}")
+
+                    last_scan_time = current_time
 
                 # Sleep to prevent busy waiting
                 await asyncio.sleep(5.0)

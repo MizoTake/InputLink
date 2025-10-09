@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from queue import Empty, Queue
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 import asyncio
 import inspect
 
@@ -94,10 +94,10 @@ class InputCaptureEngine:
 
     def get_input_data(self, timeout: float = 0.1) -> Optional[ControllerInputData]:
         """Get next input data from queue.
-        
+
         Args:
             timeout: Timeout in seconds
-            
+
         Returns:
             Next input data or None if timeout
         """
@@ -105,20 +105,19 @@ class InputCaptureEngine:
             if self._input_queue.empty():
                 return None
             return self._input_queue.get_nowait()
-        end = time.monotonic() + timeout
-        while time.monotonic() < end:
+
+        # CPU-friendly polling with reasonable sleep intervals
+        # Accept ~5ms timing precision to avoid CPU spinning
+        end_time = time.monotonic() + timeout
+        poll_interval = min(0.005, timeout / 10)  # 5ms or 10% of timeout
+
+        while time.monotonic() < end_time:
             if not self._input_queue.empty():
                 return self._input_queue.get_nowait()
-            # Use shorter, more precise sleep for polling
-            remaining = end - time.monotonic()
-            if remaining > 0.001:
-                time.sleep(0.001)  # 1ms precision
-            else:
-                # Busy-wait for final microseconds
-                while time.monotonic() < end and self._input_queue.empty():
-                    pass
-                if not self._input_queue.empty():
-                    return self._input_queue.get_nowait()
+            remaining = end_time - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(poll_interval, remaining))
+
         return None
 
     def get_current_state(self, controller_id: str) -> Optional[ControllerInputData]:
@@ -145,6 +144,9 @@ class InputCaptureEngine:
             # Process all connected controllers
             connected_controllers = self._controller_manager.get_connected_controllers()
 
+            # Cleanup joysticks for disconnected controllers to prevent memory leak
+            self._cleanup_disconnected_joysticks(connected_controllers)
+
             for controller in connected_controllers:
                 if controller.assigned_number is None:
                     continue  # Skip unassigned controllers
@@ -163,10 +165,9 @@ class InputCaptureEngine:
 
                         # Queue input data; if full, drop oldest then add
                         if self._input_queue.full():
-                            try:
+                            # Drop oldest message if queue is full
+                            if not self._input_queue.empty():
                                 self._input_queue.get_nowait()
-                            except Empty:
-                                pass
                         self._input_queue.put_nowait(input_data)
 
                         # Call callback if provided
@@ -183,35 +184,30 @@ class InputCaptureEngine:
                                         "Async input_callback provided but no running event loop set"
                                     )
 
-            # Maintain polling rate with high precision timing
+            # Maintain polling rate with CPU-friendly sleep
+            # Accept slight timing variance to avoid busy-wait CPU consumption
             elapsed = time.perf_counter() - start_time
             sleep_time = max(0, poll_interval - elapsed)
             if sleep_time > 0:
-                # Use busy-wait for sub-millisecond precision when needed
-                if sleep_time > 0.001:  # 1ms threshold
-                    time.sleep(sleep_time - 0.001)
-                    # Busy-wait for the remaining time for precise timing
-                    target_time = start_time + poll_interval
-                    while time.perf_counter() < target_time:
-                        pass
-                else:
-                    # Pure busy-wait for very short sleeps
-                    target_time = start_time + poll_interval
-                    while time.perf_counter() < target_time:
-                        pass
+                time.sleep(sleep_time)
 
     def _capture_controller_input(self, controller: DetectedController) -> Optional[ControllerInputData]:
         """Capture input from a specific controller.
-        
+
         Args:
             controller: Controller to capture from
-            
+
         Returns:
             Controller input data or None on error
         """
         # Get or create pygame joystick
         joystick = self._get_pygame_joystick(controller)
         if not joystick:
+            return None
+
+        # Verify joystick is still initialized (may be disconnected)
+        if not joystick.get_init():
+            logger.debug(f"Joystick {controller.pygame_id} not initialized, skipping")
             return None
 
         # Capture button states
@@ -232,12 +228,31 @@ class InputCaptureEngine:
 
         return input_data
 
+    def _cleanup_disconnected_joysticks(self, connected_controllers: List[DetectedController]) -> None:
+        """Cleanup joysticks for controllers that are no longer connected.
+
+        Args:
+            connected_controllers: List of currently connected controllers
+        """
+        # Build set of pygame IDs that are currently connected
+        active_pygame_ids = {controller.pygame_id for controller in connected_controllers}
+
+        # Find and cleanup joysticks that are no longer connected
+        stale_ids = set(self._pygame_joysticks.keys()) - active_pygame_ids
+
+        for pygame_id in stale_ids:
+            joystick = self._pygame_joysticks.get(pygame_id)
+            if joystick and joystick.get_init():
+                joystick.quit()
+                logger.debug(f"Cleaned up pygame joystick {pygame_id}")
+            del self._pygame_joysticks[pygame_id]
+
     def _get_pygame_joystick(self, controller: DetectedController) -> Optional[pygame.joystick.Joystick]:
         """Get or create pygame joystick instance.
-        
+
         Args:
             controller: Controller to get joystick for
-            
+
         Returns:
             Pygame joystick instance or None
         """

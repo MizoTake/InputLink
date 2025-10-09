@@ -31,6 +31,46 @@
 - PRs include what/why, linked issues, and a test plan; add screenshots/GIFs for GUI changes.
 - Ensure CI passes: at minimum `make lint && make test` (or `make check` if available).
 
+## Long-Running Stability Guidelines
+**Critical for 24+ hour continuous operation:**
+
+### Memory Leak Prevention
+1. **Asyncio Tasks**: Always cancel and await pending tasks with `asyncio.gather(*tasks, return_exceptions=True)`
+2. **pygame Joysticks**: Call `joystick.quit()` before removing; cleanup disconnected devices periodically
+3. **Queue Overflow**: Use bounded queues; drop oldest on full instead of raising exceptions
+
+### CPU Efficiency
+1. **Avoid Busy-Wait**: Replace `while time.perf_counter() < target: pass` with `time.sleep()`
+2. **Polling Intervals**: 5-10ms sleep acceptable for 60Hz; sub-millisecond precision unnecessary
+3. **Event Processing**: Use blocking I/O (queue.get, asyncio.wait) instead of tight polling loops
+
+### Resource Management
+- WebSocket queue: 100 msg limit (prevents memory growth during network issues)
+- Controller cleanup: Run every polling cycle (detect disconnects)
+- Reconnect backoff: 30s max (avoid log spam during extended outages)
+
+### Testing Long-Running Behavior
+```bash
+# Stress test for memory leaks (run 12+ hours)
+python main.py sender --verbose &
+# Monitor with: ps aux | grep python (check RSS/VSZ growth)
+
+# CPU profiling
+python -m cProfile -o profile.stats main.py sender
+python -m pstats profile.stats  # analyze hotspots
+```
+
+### Known Issues Fixed (2025-01-XX)
+1. **WebSocket Context Manager**: `websockets.connect()` returns a context manager, not a direct coroutine
+   - Fixed in `websocket_client.py:_attempt_connection()` by wrapping in `connect_wrapper()` that calls `__aenter__()`
+   - Added comprehensive test coverage with proper mock context managers
+
+2. **Controller Hot-Plug Detection**: `scan_controllers()` sometimes failed to detect newly connected controllers
+   - Root cause: pygame's event queue not updated before checking joystick count
+   - Fixed by adding `pygame.event.pump()` at start of `ControllerManager.scan_controllers()` (line 104)
+   - This updates pygame's internal device list before calling `pygame.joystick.get_count()`
+   - Updated all unit tests to mock `pygame.event.pump()` for test environments
+
 ## Security & Configuration Tips
 - Windows-only virtual gamepad uses `vgamepad`; GUI requires `PySide6`. Install via `make install-dev`.
 - Keep secrets out of VCS. Use `src/input_link/models/config.py`; pass configs with `--config <path>` when supported.

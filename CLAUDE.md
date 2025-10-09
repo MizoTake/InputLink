@@ -250,6 +250,43 @@ make clean
 - Auto-creation of virtual controllers on-demand
 - State synchronization with input data validation
 
+## Long-Running Stability
+
+### Memory Management
+**CRITICAL for 24+ hour operation:**
+
+1. **Asyncio Task Cleanup** (`websocket_client.py:285-314`):
+   - Use `asyncio.wait()` + `asyncio.gather()` for timeout handling
+   - Always await cancellation with `return_exceptions=True`
+   - Avoid `asyncio.create_task()` without proper cleanup
+
+2. **pygame Joystick Lifecycle** (`input_capture.py:238-255`):
+   - Cleanup disconnected joysticks in `_cleanup_disconnected_joysticks()`
+   - Call `joystick.quit()` before removing from tracking dict
+   - Run cleanup every polling cycle (60Hz)
+
+3. **Input Queue Management** (`input_capture.py:167-172`):
+   - Check `queue.empty()` before `get_nowait()` to avoid exceptions
+   - Drop oldest message when full (bounded queue behavior)
+
+### CPU Optimization
+**Avoid busy-wait loops for long-running processes:**
+
+1. **Polling Rate Timing** (`input_capture.py:188-193`):
+   - Use `time.sleep()` for main delay (accept ~1ms variance)
+   - Remove busy-wait loops that consume 100% CPU
+   - 60Hz polling: ~16.6ms/cycle is sufficient
+
+2. **Queue Polling** (`input_capture.py:109-121`):
+   - Use 5ms sleep intervals instead of busy-wait
+   - Acceptable latency tradeoff for CPU efficiency
+
+### Resource Limits
+- Message queue: 100 messages max (configurable)
+- Controller scan: Manual trigger or periodic (not every cycle)
+- WebSocket reconnect backoff: Max 30s (consider 60s for production)
+- GUI shutdown timeout: 10s recommended (currently 5s)
+
 ## Coding Rules
 
 ### Error Handling

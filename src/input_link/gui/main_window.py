@@ -189,13 +189,11 @@ class MainWindow(QMainWindow):
         button_row1.addWidget(self.start_sender_btn)
         button_row1.addWidget(self.start_receiver_btn)
 
-        # Button row 2
+        # Button row 2 - Stop All only
         button_row2 = QHBoxLayout()
         self.stop_btn = AnimatedButton("Stop All", "destructive")
-        self.config_btn = AnimatedButton("Settings", "secondary")
-
         button_row2.addWidget(self.stop_btn)
-        button_row2.addWidget(self.config_btn)
+        button_row2.addStretch()  # Push button to the left
 
         control_layout.addLayout(button_row1)
         control_layout.addLayout(button_row2)
@@ -206,8 +204,7 @@ class MainWindow(QMainWindow):
         # Connect signals
         self.start_sender_btn.clicked.connect(self.start_sender.emit)
         self.start_receiver_btn.clicked.connect(self.start_receiver.emit)
-        self.stop_btn.clicked.connect(self.stop_services.emit)
-        self.config_btn.clicked.connect(self._show_settings)
+        self.stop_btn.clicked.connect(self._on_stop_all)
 
     def _create_config_section(self, layout: QVBoxLayout):
         """Create configuration display section."""
@@ -294,10 +291,17 @@ class MainWindow(QMainWindow):
         """Setup global application styling with theme support."""
         self.setStyleSheet(theme_manager.get_window_style())
 
-    def _show_settings(self):
-        """Show settings dialog."""
-        # Placeholder for settings dialog
-        QMessageBox.information(self, "Settings", "Settings dialog will be implemented here.")
+    def _on_stop_all(self):
+        """Handle Stop All button click and reset button states."""
+        # Emit stop signal
+        self.stop_services.emit()
+
+        # Reset sender and receiver status to Ready
+        self.update_sender_status("Ready", "#8E8E93")
+        self.update_receiver_status("Ready", "#8E8E93")
+
+        # Add log message
+        self.add_log_message("All services stopped")
 
     def _tray_activated(self, reason):
         """Handle tray icon activation."""

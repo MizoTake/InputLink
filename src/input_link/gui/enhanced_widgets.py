@@ -689,10 +689,16 @@ class ModernCardScrollArea(EnhancedScrollArea):
     
     def show_empty_message(self, show: bool = True):
         """Show or hide the empty message."""
-        if hasattr(self, '_empty_label'):
-            if show and self.cards_layout.count() <= 1:  # Only stretch item
+        if not hasattr(self, '_empty_label'):
+            return
+
+        if show and self.cards_layout.count() <= 1:  # Only stretch item
+            # Only add if not already in layout
+            if self._empty_label.parent() is None:
                 self.cards_layout.insertWidget(0, self._empty_label)
-            elif not show:
+        elif not show:
+            # Only remove if currently in layout
+            if self._empty_label.parent() is not None:
                 self.cards_layout.removeWidget(self._empty_label)
                 self._empty_label.setParent(None)
 

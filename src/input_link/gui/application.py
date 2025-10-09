@@ -147,6 +147,7 @@ class AsyncWorker(QThread):
         print("Controller manager initialized")
 
         # Scan for controllers and get only connected ones
+        # Note: scan_controllers() internally calls pygame.event.pump() for hot-plug detection
         all_controllers = self.controller_manager.scan_controllers()
         connected_controllers = self.controller_manager.get_connected_controllers()
 
@@ -526,9 +527,24 @@ class InputLinkApplication(QApplication):
 
     @Slot()
     def _stop_all_services(self):
-        """Stop all running services."""
+        """Stop all running services and reset UI states."""
         self._stop_sender()
         self._stop_receiver()
+
+        # Reset sender window button states
+        if self.sender_window:
+            self.sender_window.is_capturing = False
+            self.sender_window.start_btn.setText("Start Capturing")
+            self.sender_window.start_btn.button_type = "primary"
+            self.sender_window.start_btn._setup_style()
+
+        # Reset receiver window button states
+        if self.receiver_window:
+            self.receiver_window.is_running = False
+            self.receiver_window.start_btn.setText("Start Server")
+            self.receiver_window.start_btn.button_type = "primary"
+            self.receiver_window.start_btn._setup_style()
+
         self.main_window.add_log_message("All services stopped")
 
     @Slot()

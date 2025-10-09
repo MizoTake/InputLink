@@ -99,6 +99,10 @@ class ControllerManager:
         if not self._initialized:
             self.initialize()
 
+        # Update pygame event queue to detect hot-plugged devices
+        # This must be called before get_count() to detect newly connected controllers
+        pygame.event.pump()
+
         current_controllers = {}
 
         # Get current joystick count

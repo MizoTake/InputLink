@@ -381,3 +381,111 @@ class TestInputCaptureEngine:
         assert result is None
         # Should complete quickly and not significantly overshoot (allow system variance)
         assert elapsed < 0.01  # Should complete in less than 10ms
+
+    @patch("pygame.joystick.Joystick")
+    def test_joystick_cleanup_on_disconnect(self, mock_joystick_class):
+        """Should cleanup disconnected joysticks to prevent memory leak."""
+        # Create mock joysticks
+        mock_joystick1 = Mock()
+        mock_joystick1.get_init.return_value = True
+        mock_joystick1.quit = Mock()
+
+        mock_joystick2 = Mock()
+        mock_joystick2.get_init.return_value = True
+        mock_joystick2.quit = Mock()
+
+        # Add joysticks to tracking
+        self.engine._pygame_joysticks[0] = mock_joystick1
+        self.engine._pygame_joysticks[1] = mock_joystick2
+
+        # Create controller list with only one controller (simulating disconnect)
+        connected_controllers = [
+            DetectedController(
+                pygame_id=0,
+                device_id=1,
+                name="Controller 1",
+                guid="guid1",
+                num_axes=6,
+                num_buttons=10,
+                num_hats=1,
+                assigned_number=1,
+            )
+        ]
+
+        # Cleanup disconnected joysticks
+        self.engine._cleanup_disconnected_joysticks(connected_controllers)
+
+        # Joystick 0 should remain
+        assert 0 in self.engine._pygame_joysticks
+
+        # Joystick 1 should be cleaned up
+        assert 1 not in self.engine._pygame_joysticks
+        mock_joystick2.quit.assert_called_once()
+
+    @patch("pygame.joystick.Joystick")
+    def test_controller_input_capture_with_disconnection(self, mock_joystick_class):
+        """Should handle controller disconnection gracefully."""
+        mock_joystick = Mock()
+        mock_joystick.get_init.return_value = False  # Simulate disconnected
+
+        self.engine._pygame_joysticks[0] = mock_joystick
+
+        # Attempt to capture input from disconnected controller
+        result = self.engine._capture_controller_input(self.mock_controller)
+
+        assert result is None  # Should return None for disconnected controller
+
+    @patch("pygame.joystick.Joystick")
+    def test_capture_button_state_always_returns_valid_object(self, mock_joystick_class):
+        """Should always return ButtonState object, never None."""
+        mock_joystick = Mock()
+        mock_joystick.get_numbuttons.return_value = 0  # No buttons
+        mock_joystick.get_numhats.return_value = 0  # No hats
+
+        buttons = self.engine._capture_button_state(mock_joystick)
+
+        # Should return ButtonState even with no buttons
+        assert buttons is not None
+        assert isinstance(buttons, ButtonState)
+
+    @patch("pygame.joystick.Joystick")
+    def test_capture_axis_state_always_returns_valid_object(self, mock_joystick_class):
+        """Should always return ControllerState object, never None."""
+        mock_joystick = Mock()
+        mock_joystick.get_numaxes.return_value = 0  # No axes
+
+        axes = self.engine._capture_axis_state(mock_joystick)
+
+        # Should return ControllerState even with no axes
+        assert axes is not None
+        assert isinstance(axes, ControllerState)
+
+    def test_controller_input_transmission_flow(self):
+        """Should properly transmit controller input through callback."""
+        # Test that input data flows correctly from capture to callback
+        callback_data = []
+
+        def input_callback(data):
+            callback_data.append(data)
+
+        engine = InputCaptureEngine(
+            self.mock_controller_manager,
+            input_callback=input_callback,
+        )
+
+        # Simulate input data
+        test_data = ControllerInputData(
+            controller_number=1,
+            controller_id="test_controller",
+            buttons=ButtonState(a=True),
+            axes=ControllerState(left_stick_x=0.5),
+        )
+
+        # Manually call callback
+        engine._input_callback(test_data)
+
+        # Verify data was transmitted
+        assert len(callback_data) == 1
+        assert callback_data[0].controller_number == 1
+        assert callback_data[0].buttons.a is True
+        assert callback_data[0].axes.left_stick_x == 0.5

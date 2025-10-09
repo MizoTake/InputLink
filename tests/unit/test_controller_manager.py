@@ -110,9 +110,10 @@ class TestControllerManager:
         with pytest.raises(RuntimeError, match="Pygame initialization failed: 2 modules failed"):
             self.manager.initialize()
 
+    @patch("pygame.event.pump")
     @patch("pygame.joystick.get_count", return_value=2)
     @patch("pygame.joystick.Joystick")
-    def test_scan_controllers_success(self, mock_joystick_class, mock_get_count):
+    def test_scan_controllers_success(self, mock_joystick_class, mock_get_count, mock_event_pump):
         """Should scan and detect controllers successfully."""
         # Mock joysticks
         mock_joystick1 = Mock()
@@ -142,9 +143,10 @@ class TestControllerManager:
         assert controllers[0].assigned_number == 1
         assert controllers[1].assigned_number == 2
 
+    @patch("pygame.event.pump")
     @patch("pygame.joystick.get_count", return_value=1)
     @patch("pygame.joystick.Joystick")
-    def test_scan_controllers_with_error(self, mock_joystick_class, mock_get_count):
+    def test_scan_controllers_with_error(self, mock_joystick_class, mock_get_count, mock_event_pump):
         """Should handle joystick access errors by letting exception propagate."""
         # Mock pygame.error instead of generic Exception
         import pygame
@@ -242,9 +244,10 @@ class TestControllerManager:
         mock_pygame_quit.assert_called_once()
         assert not self.manager._initialized
 
+    @patch("pygame.event.pump")
     @patch("pygame.joystick.get_count")
     @patch("pygame.joystick.Joystick")
-    def test_rescan_controllers_consistency(self, mock_joystick_class, mock_get_count):
+    def test_rescan_controllers_consistency(self, mock_joystick_class, mock_get_count, mock_event_pump):
         """Should return consistent results on multiple scans."""
         # First scan - controller present
         mock_get_count.return_value = 1
@@ -277,9 +280,10 @@ class TestControllerManager:
         assert len(connected_second) == 1
         assert connected_first[0].identifier == connected_second[0].identifier
 
+    @patch("pygame.event.pump")
     @patch("pygame.joystick.get_count")
     @patch("pygame.joystick.Joystick")
-    def test_controller_disconnect_and_reconnect(self, mock_joystick_class, mock_get_count):
+    def test_controller_disconnect_and_reconnect(self, mock_joystick_class, mock_get_count, mock_event_pump):
         """Should handle controller disconnect and reconnect properly."""
         # First scan - controller present
         mock_get_count.return_value = 1

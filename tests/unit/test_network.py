@@ -324,6 +324,70 @@ class TestWebSocketClient:
         success = await self.client.send_message(None)
         assert not success
 
+    @pytest.mark.asyncio
+    async def test_connection_with_localhost_variants(self):
+        """Should handle connection to 0.0.0.0 server from 127.0.0.1 client."""
+        # Test that exception handling works correctly in _attempt_connection
+        client = WebSocketClient(
+            host="127.0.0.1",
+            port=9999,  # Non-existent server
+            reconnect_interval=0.1,
+            max_reconnect_attempts=1,
+        )
+
+        # Mock the connection attempt to simulate exception
+        with patch("websockets.connect") as mock_connect:
+            # Create mock context manager that raises on __aenter__
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__.side_effect = OSError("Connection refused")
+            mock_connect.return_value = mock_ctx
+
+            result = await client._attempt_connection()
+            assert result is None
+
+        # Test successful connection handling
+        with patch("websockets.connect") as mock_connect:
+            # Create mock context manager that returns websocket on __aenter__
+            mock_websocket = AsyncMock()
+            mock_websocket.closed = False
+
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__.return_value = mock_websocket
+            mock_connect.return_value = mock_ctx
+
+            result = await client._attempt_connection()
+            assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_attempt_connection_exception_handling(self):
+        """Should handle connection exceptions without try-catch."""
+        # Test that task.exception() check works correctly
+        with patch("websockets.connect") as mock_connect:
+            # Create mock context manager that raises TimeoutError on __aenter__
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__.side_effect = asyncio.TimeoutError("Connection timed out")
+            mock_connect.return_value = mock_ctx
+
+            result = await self.client._attempt_connection()
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_attempt_connection_timeout(self):
+        """Should handle connection timeout correctly."""
+        with patch("websockets.connect") as mock_connect:
+            # Create mock context manager with slow __aenter__ that times out
+            mock_ctx = AsyncMock()
+
+            async def slow_aenter():
+                await asyncio.sleep(20)  # Longer than 10s timeout
+                return AsyncMock()
+
+            mock_ctx.__aenter__.side_effect = slow_aenter
+            mock_connect.return_value = mock_ctx
+
+            result = await self.client._attempt_connection()
+            assert result is None
+
 
 class TestWebSocketServer:
     """Test WebSocket server."""

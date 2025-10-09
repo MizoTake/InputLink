@@ -179,11 +179,30 @@ class WebSocketClient:
         while self._running:
             if self._status_callback:
                 self._status_callback("connecting")
-            websocket = await websockets.connect(
-                self.uri,
-                ping_timeout=self._ping_timeout,
-                close_timeout=10,
-            )
+
+            # Attempt connection - handle failure without exceptions
+            connection_result = await self._attempt_connection()
+            if connection_result is None:
+                # Connection failed - apply reconnection logic
+                self._reconnect_attempts += 1
+
+                # Check if we should retry
+                if self._max_reconnect_attempts > 0 and self._reconnect_attempts >= self._max_reconnect_attempts:
+                    logger.error("Max reconnection attempts reached")
+                    if self._status_callback:
+                        self._status_callback("failed")
+                    break
+
+                # Calculate backoff with max 60s for long outages
+                wait_time = min(self._reconnect_interval * (2 ** (self._reconnect_attempts - 1)), 60)
+                logger.info(f"Reconnecting in {wait_time}s (attempt {self._reconnect_attempts})")
+                if self._status_callback:
+                    self._status_callback("reconnecting")
+                await asyncio.sleep(wait_time)
+                continue
+
+            # Connection successful
+            websocket = connection_result
             self._websocket = websocket
             self._connected = True
             self._reconnect_attempts = 0
@@ -205,23 +224,48 @@ class WebSocketClient:
             if self._status_callback:
                 self._status_callback("disconnected")
 
-            # Reconnection logic (max_reconnect_attempts <= 0 means infinite)
-            if self._running and (
-                self._max_reconnect_attempts <= 0 or
-                self._reconnect_attempts < self._max_reconnect_attempts
-            ):
-                self._reconnect_attempts += 1
-                wait_time = min(self._reconnect_interval * (2 ** (self._reconnect_attempts - 1)), 30)
+    async def _attempt_connection(self) -> Optional[websockets.WebSocketClientProtocol]:
+        """Attempt to connect to WebSocket server.
 
-                logger.info(f"Reconnecting in {wait_time}s (attempt {self._reconnect_attempts})")
-                if self._status_callback:
-                    self._status_callback("reconnecting")
-                await asyncio.sleep(wait_time)
-            elif self._running:
-                logger.error("Max reconnection attempts reached")
-                if self._status_callback:
-                    self._status_callback("failed")
-                break
+        Returns:
+            WebSocket connection on success, None on failure
+        """
+        # Create wrapper coroutine for connection with proper context manager handling
+        async def connect_wrapper():
+            """Wrapper to handle websockets.connect as context manager."""
+            ctx = websockets.connect(
+                self.uri,
+                ping_timeout=self._ping_timeout,
+                close_timeout=10,
+            )
+            # Enter context manager to get actual connection
+            return await ctx.__aenter__()
+
+        # Use asyncio.wait to handle connection failure without exceptions
+        connect_task = asyncio.create_task(connect_wrapper())
+        done, pending = await asyncio.wait(
+            [connect_task],
+            timeout=10.0,  # 10 second connection timeout
+            return_when=asyncio.FIRST_COMPLETED
+        )
+
+        if done:
+            task = done.pop()
+            # Check if task raised an exception
+            exception = task.exception()
+            if exception is not None:
+                # Connection failed with exception
+                logger.warning(f"Connection failed: {exception}")
+                return None
+            # Connection succeeded
+            return task.result()
+
+        # Connection timed out - cancel pending tasks
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+        logger.warning("Connection attempt timed out")
+        return None
 
     async def _message_receiver(self, websocket) -> None:
         """Receive and process messages from server.
@@ -240,7 +284,7 @@ class WebSocketClient:
     async def _message_sender(self) -> None:
         """Send queued messages to server."""
         while self._running:
-            # Get message with timeout - use helper method
+            # Get message with timeout - returns None on timeout
             message = await self._safe_queue_get(timeout=1.0)
             if message is None:
                 continue  # Timeout or queue closed
@@ -294,15 +338,21 @@ class WebSocketClient:
         if not self._running:
             return None
 
-        # Use asyncio.wait_for but handle timeout gracefully
-        future = asyncio.create_task(self._message_queue.get())
-        done, pending = await asyncio.wait([future], timeout=timeout)
+        # Create task and use asyncio.wait with proper cleanup
+        get_task = asyncio.create_task(self._message_queue.get())
+        done, pending = await asyncio.wait(
+            [get_task],
+            timeout=timeout,
+            return_when=asyncio.FIRST_COMPLETED
+        )
 
         if done:
-            task = done.pop()
-            return task.result()
-        else:
-            # Cancel pending task and return None for timeout
-            for task in pending:
-                task.cancel()
-            return None
+            # Task completed - return the result
+            return done.pop().result()
+
+        # Timeout occurred - must cancel pending tasks to avoid leak
+        for task in pending:
+            task.cancel()
+        # Wait for cancellation to complete to ensure proper cleanup
+        await asyncio.gather(*pending, return_exceptions=True)
+        return None
