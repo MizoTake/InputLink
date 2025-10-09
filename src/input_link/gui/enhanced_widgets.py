@@ -663,10 +663,23 @@ class ModernCardScrollArea(EnhancedScrollArea):
     
     def clear_cards(self):
         """Remove all cards with smooth animation."""
-        while self.cards_layout.count() > 1:  # Keep stretch item
-            item = self.cards_layout.takeAt(0)
+        # Remove all items except stretch and empty_label
+        i = 0
+        while i < self.cards_layout.count():
+            item = self.cards_layout.itemAt(i)
             if item.widget():
+                # Don't remove empty_label or if it's not a card
+                if hasattr(self, '_empty_label') and item.widget() == self._empty_label:
+                    i += 1
+                    continue
+                # Remove and delete the widget
+                self.cards_layout.takeAt(i)
                 item.widget().deleteLater()
+            elif item.spacerItem():
+                # Keep stretch item
+                i += 1
+            else:
+                i += 1
     
     def set_empty_message(self, message: str):
         """Set a message to display when no cards are present."""
