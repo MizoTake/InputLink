@@ -132,8 +132,8 @@ class WindowsVirtualController(VirtualController):
         try:
             import vgamepad as vg
 
-            # Reset all buttons
             if self.controller_type == "xbox360":
+                # Reset all Xbox360 buttons
                 buttons = [
                     vg.XUSB_BUTTON.XUSB_GAMEPAD_A,
                     vg.XUSB_BUTTON.XUSB_GAMEPAD_B,
@@ -162,83 +162,180 @@ class WindowsVirtualController(VirtualController):
                 self._gamepad.left_trigger(value=0)
                 self._gamepad.right_trigger(value=0)
 
+            elif self.controller_type == "ds4":
+                # Reset all DS4 buttons
+                buttons = [
+                    vg.DS4_BUTTONS.DS4_BUTTON_CROSS,
+                    vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE,
+                    vg.DS4_BUTTONS.DS4_BUTTON_SQUARE,
+                    vg.DS4_BUTTONS.DS4_BUTTON_TRIANGLE,
+                    vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_LEFT,
+                    vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_RIGHT,
+                    vg.DS4_BUTTONS.DS4_BUTTON_SHARE,
+                    vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS,
+                    vg.DS4_BUTTONS.DS4_BUTTON_THUMB_LEFT,
+                    vg.DS4_BUTTONS.DS4_BUTTON_THUMB_RIGHT,
+                ]
+
+                for button in buttons:
+                    self._gamepad.release_button(button)
+
+                # Reset D-pad
+                self._gamepad.directional_pad(direction=vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NONE)
+
+                # Reset sticks (DS4 uses 0-255 range with 128 as center)
+                self._gamepad.left_joystick(x_value=128, y_value=128)
+                self._gamepad.right_joystick(x_value=128, y_value=128)
+
+                # Reset triggers
+                self._gamepad.left_trigger(value=0)
+                self._gamepad.right_trigger(value=0)
+
             # Send update
             self._gamepad.update()
-            logger.debug(f"Controller {self.controller_number} reset to neutral state")
+            logger.debug(f"Controller {self.controller_number} ({self.controller_type}) reset to neutral state")
 
         except Exception as e:
             logger.error(f"Failed to reset controller state: {e}")
 
     def _update_buttons(self, buttons: ButtonState) -> None:
         """Update button states.
-        
+
         Args:
             buttons: Button state
         """
         import vgamepad as vg
 
-        if self.controller_type != "xbox360":
-            return  # Only Xbox360 mapping implemented for now
-
-        # Button mapping for Xbox360
-        button_mapping = {
-            "a": vg.XUSB_BUTTON.XUSB_GAMEPAD_A,
-            "b": vg.XUSB_BUTTON.XUSB_GAMEPAD_B,
-            "x": vg.XUSB_BUTTON.XUSB_GAMEPAD_X,
-            "y": vg.XUSB_BUTTON.XUSB_GAMEPAD_Y,
-            "lb": vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_SHOULDER,
-            "rb": vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER,
-            "back": vg.XUSB_BUTTON.XUSB_GAMEPAD_BACK,
-            "start": vg.XUSB_BUTTON.XUSB_GAMEPAD_START,
-            "ls": vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_THUMB,
-            "rs": vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_THUMB,
-            "dpad_up": vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_UP,
-            "dpad_down": vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_DOWN,
-            "dpad_left": vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_LEFT,
-            "dpad_right": vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_RIGHT,
-        }
-
         # Get previous button state
         prev_buttons = self._last_state.buttons if self._last_state else ButtonState()
 
-        # Update each button
-        for button_name, vg_button in button_mapping.items():
-            current_pressed = getattr(buttons, button_name)
-            previous_pressed = getattr(prev_buttons, button_name)
+        if self.controller_type == "xbox360":
+            # Button mapping for Xbox360
+            button_mapping = {
+                "a": vg.XUSB_BUTTON.XUSB_GAMEPAD_A,
+                "b": vg.XUSB_BUTTON.XUSB_GAMEPAD_B,
+                "x": vg.XUSB_BUTTON.XUSB_GAMEPAD_X,
+                "y": vg.XUSB_BUTTON.XUSB_GAMEPAD_Y,
+                "lb": vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_SHOULDER,
+                "rb": vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER,
+                "back": vg.XUSB_BUTTON.XUSB_GAMEPAD_BACK,
+                "start": vg.XUSB_BUTTON.XUSB_GAMEPAD_START,
+                "ls": vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_THUMB,
+                "rs": vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_THUMB,
+                "dpad_up": vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_UP,
+                "dpad_down": vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_DOWN,
+                "dpad_left": vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_LEFT,
+                "dpad_right": vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_RIGHT,
+            }
 
-            # Only update if state changed
-            if current_pressed != previous_pressed:
-                if current_pressed:
-                    self._gamepad.press_button(vg_button)
+            # Update each button
+            for button_name, vg_button in button_mapping.items():
+                current_pressed = getattr(buttons, button_name)
+                previous_pressed = getattr(prev_buttons, button_name)
+
+                # Only update if state changed
+                if current_pressed != previous_pressed:
+                    if current_pressed:
+                        self._gamepad.press_button(vg_button)
+                    else:
+                        self._gamepad.release_button(vg_button)
+
+        elif self.controller_type == "ds4":
+            # Button mapping for DS4 (DualShock 4)
+            button_mapping = {
+                "a": vg.DS4_BUTTONS.DS4_BUTTON_CROSS,
+                "b": vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE,
+                "x": vg.DS4_BUTTONS.DS4_BUTTON_SQUARE,
+                "y": vg.DS4_BUTTONS.DS4_BUTTON_TRIANGLE,
+                "lb": vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_LEFT,
+                "rb": vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_RIGHT,
+                "back": vg.DS4_BUTTONS.DS4_BUTTON_SHARE,
+                "start": vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS,
+                "ls": vg.DS4_BUTTONS.DS4_BUTTON_THUMB_LEFT,
+                "rs": vg.DS4_BUTTONS.DS4_BUTTON_THUMB_RIGHT,
+            }
+
+            # Update each button
+            for button_name, vg_button in button_mapping.items():
+                current_pressed = getattr(buttons, button_name)
+                previous_pressed = getattr(prev_buttons, button_name)
+
+                # Only update if state changed
+                if current_pressed != previous_pressed:
+                    if current_pressed:
+                        self._gamepad.press_button(vg_button)
+                    else:
+                        self._gamepad.release_button(vg_button)
+
+            # DS4 D-pad uses directional_pad method instead of buttons
+            if (buttons.dpad_up != prev_buttons.dpad_up or
+                buttons.dpad_down != prev_buttons.dpad_down or
+                buttons.dpad_left != prev_buttons.dpad_left or
+                buttons.dpad_right != prev_buttons.dpad_right):
+
+                # Determine direction
+                if buttons.dpad_up and buttons.dpad_right:
+                    self._gamepad.directional_pad(direction=vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTHEAST)
+                elif buttons.dpad_up and buttons.dpad_left:
+                    self._gamepad.directional_pad(direction=vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTHWEST)
+                elif buttons.dpad_down and buttons.dpad_right:
+                    self._gamepad.directional_pad(direction=vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTHEAST)
+                elif buttons.dpad_down and buttons.dpad_left:
+                    self._gamepad.directional_pad(direction=vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTHWEST)
+                elif buttons.dpad_up:
+                    self._gamepad.directional_pad(direction=vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTH)
+                elif buttons.dpad_down:
+                    self._gamepad.directional_pad(direction=vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH)
+                elif buttons.dpad_left:
+                    self._gamepad.directional_pad(direction=vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_WEST)
+                elif buttons.dpad_right:
+                    self._gamepad.directional_pad(direction=vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST)
                 else:
-                    self._gamepad.release_button(vg_button)
+                    self._gamepad.directional_pad(direction=vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NONE)
 
     def _update_axes(self, axes: ControllerState) -> None:
         """Update axis states.
-        
+
         Args:
             axes: Controller axis state
         """
-        if self.controller_type != "xbox360":
-            return  # Only Xbox360 mapping implemented for now
+        if self.controller_type == "xbox360":
+            # Convert from [-1, 1] to vgamepad's expected ranges
 
-        # Convert from [-1, 1] to vgamepad's expected ranges
+            # Left stick (range: -32768 to 32767)
+            left_x = int(axes.left_stick_x * 32767)
+            left_y = int(axes.left_stick_y * 32767)
+            self._gamepad.left_joystick(x_value=left_x, y_value=left_y)
 
-        # Left stick (range: -32768 to 32767)
-        left_x = int(axes.left_stick_x * 32767)
-        left_y = int(axes.left_stick_y * 32767)
-        self._gamepad.left_joystick(x_value=left_x, y_value=left_y)
+            # Right stick (range: -32768 to 32767)
+            right_x = int(axes.right_stick_x * 32767)
+            right_y = int(axes.right_stick_y * 32767)
+            self._gamepad.right_joystick(x_value=right_x, y_value=right_y)
 
-        # Right stick (range: -32768 to 32767)
-        right_x = int(axes.right_stick_x * 32767)
-        right_y = int(axes.right_stick_y * 32767)
-        self._gamepad.right_joystick(x_value=right_x, y_value=right_y)
+            # Triggers (range: 0 to 255)
+            left_trigger = int(axes.left_trigger * 255)
+            right_trigger = int(axes.right_trigger * 255)
+            self._gamepad.left_trigger(value=left_trigger)
+            self._gamepad.right_trigger(value=right_trigger)
 
-        # Triggers (range: 0 to 255)
-        left_trigger = int(axes.left_trigger * 255)
-        right_trigger = int(axes.right_trigger * 255)
-        self._gamepad.left_trigger(value=left_trigger)
-        self._gamepad.right_trigger(value=right_trigger)
+        elif self.controller_type == "ds4":
+            # Convert from [-1, 1] to DS4's expected ranges
+
+            # Left stick (range: 0 to 255, with 128 as center)
+            left_x = int((axes.left_stick_x + 1.0) * 127.5)
+            left_y = int((axes.left_stick_y + 1.0) * 127.5)
+            self._gamepad.left_joystick(x_value=left_x, y_value=left_y)
+
+            # Right stick (range: 0 to 255, with 128 as center)
+            right_x = int((axes.right_stick_x + 1.0) * 127.5)
+            right_y = int((axes.right_stick_y + 1.0) * 127.5)
+            self._gamepad.right_joystick(x_value=right_x, y_value=right_y)
+
+            # Triggers (range: 0 to 255)
+            left_trigger = int(axes.left_trigger * 255)
+            right_trigger = int(axes.right_trigger * 255)
+            self._gamepad.left_trigger(value=left_trigger)
+            self._gamepad.right_trigger(value=right_trigger)
 
     def __del__(self):
         """Ensure cleanup on destruction."""

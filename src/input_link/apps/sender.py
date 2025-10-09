@@ -23,14 +23,16 @@ class SenderApp:
         config_path: Optional[Path] = None,
         log_callback: Optional[Callable[[str, str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        input_preview_callback: Optional[Callable[[str, dict, dict], None]] = None,
         verbose: bool = False,
     ):
         """Initialize sender application.
-        
+
         Args:
             config_path: Path to configuration file
             log_callback: Callback for log messages (level, message)
             status_callback: Callback for status changes
+            input_preview_callback: Callback for input preview (controller_id, button_states, axis_values)
             verbose: Enable verbose (DEBUG) logging
         """
         self.config_path = config_path or Path.home() / ".input-link" / "config.json"
@@ -40,8 +42,9 @@ class SenderApp:
         self.websocket_client: Optional[WebSocketClient] = None
         self.running = False
         self._status_callback = status_callback
+        self._input_preview_callback = input_preview_callback
         self._main_task: Optional[asyncio.Task] = None
-        
+
         # Initialize logging
         self.logger = setup_application_logging(
             app_name="sender",
@@ -74,6 +77,18 @@ class SenderApp:
             if ok:
                 self.logger.info(f"Controller {controller_id} disabled")
             return ok
+
+    def set_controller_input_method(self, controller_id: str, input_method: str) -> bool:
+        """Set the input method for a controller (xinput or dinput)."""
+        if not self.controller_manager:
+            return False
+        from input_link.models import InputMethod
+        # Convert string to InputMethod enum
+        method_enum = InputMethod.XINPUT if input_method.lower() == "xinput" else InputMethod.DINPUT
+        ok = self.controller_manager.set_input_method(controller_id, method_enum)
+        if ok:
+            self.logger.info(f"Controller {controller_id} input method set to {input_method.upper()}")
+        return ok
 
     async def update_network_settings(self, host: str, port: int) -> None:
         """Update receiver host/port and reconnect WebSocket client if needed."""
@@ -245,6 +260,35 @@ class SenderApp:
         """Handle controller input data."""
         if self.websocket_client and self.websocket_client.connected:
             await self.websocket_client.send_controller_input(input_data)
+
+        # Update GUI preview if callback is set
+        if self._input_preview_callback:
+            # Extract button and axis data from input_data
+            button_states = {
+                "a": input_data.buttons.a,
+                "b": input_data.buttons.b,
+                "x": input_data.buttons.x,
+                "y": input_data.buttons.y,
+                "lb": input_data.buttons.lb,
+                "rb": input_data.buttons.rb,
+                "back": input_data.buttons.back,
+                "start": input_data.buttons.start,
+                "ls": input_data.buttons.ls,
+                "rs": input_data.buttons.rs,
+                "dpad_up": input_data.buttons.dpad_up,
+                "dpad_down": input_data.buttons.dpad_down,
+                "dpad_left": input_data.buttons.dpad_left,
+                "dpad_right": input_data.buttons.dpad_right,
+            }
+            axis_values = {
+                "left_x": input_data.axes.left_stick_x,
+                "left_y": input_data.axes.left_stick_y,
+                "right_x": input_data.axes.right_stick_x,
+                "right_y": input_data.axes.right_stick_y,
+                "left_trigger": input_data.axes.left_trigger,
+                "right_trigger": input_data.axes.right_trigger,
+            }
+            self._input_preview_callback(input_data.controller_id, button_states, axis_values)
 
     async def _cleanup(self) -> None:
         """Cleanup application resources."""

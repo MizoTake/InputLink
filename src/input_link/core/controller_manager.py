@@ -155,9 +155,10 @@ class ControllerManager:
         # Add or update controllers, preserving existing state and assigned numbers
         for pygame_id, new_controller in current_controllers.items():
             if pygame_id in self._controllers:
-                # Preserve existing assigned number and state
+                # Preserve existing assigned number, state, and input method preference
                 existing_controller = self._controllers[pygame_id]
                 new_controller.assigned_number = existing_controller.assigned_number
+                new_controller.preferred_input_method = existing_controller.preferred_input_method
                 new_controller.state = ControllerConnectionState.CONNECTED
             else:
                 # New controller - ensure it's marked as connected

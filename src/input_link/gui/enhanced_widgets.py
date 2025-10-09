@@ -9,9 +9,9 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QFont, QPainter, QColor, QPen, QBrush
 from PySide6.QtWidgets import (
-    QPushButton, QFrame, QLabel, QVBoxLayout, QHBoxLayout, 
+    QPushButton, QFrame, QLabel, QVBoxLayout, QHBoxLayout,
     QWidget, QProgressBar, QGraphicsOpacityEffect, QScrollArea,
-    QSpinBox, QCheckBox
+    QSpinBox, QCheckBox, QComboBox
 )
 
 from input_link.gui.theme_manager import theme_manager
@@ -718,29 +718,38 @@ class ModernCardScrollArea(EnhancedScrollArea):
 
 class EnhancedControllerCard(QFrame):
     """Enhanced controller card with clean vertical layout design."""
-    
+
     controller_number_changed = Signal(str, int)  # controller_id, player number
-    
+    input_method_changed = Signal(str, str)  # controller_id, input_method
+
     def __init__(self, controller):
         super().__init__()
         self.controller = controller
+        self.preview_widget = None  # Initialize preview widget reference
         self._setup_ui()
         self._setup_style()
-        
+
         # Connect to theme changes
         theme_manager.theme_changed.connect(self._setup_style)
     
     def _setup_ui(self):
-        """Setup Windows-standard controller card UI with horizontal layout."""
-        main_layout = QHBoxLayout()
-        main_layout.setContentsMargins(16, 8, 16, 8)  # Windows-standard margins
-        main_layout.setSpacing(12)  # Standard spacing
-        
-        # Left section: Controller info (horizontal layout)
+        """Setup expandable controller card UI with preview and input method selection."""
+        # Main vertical layout for card with header and expandable preview
+        card_layout = QVBoxLayout()
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.setSpacing(0)
+
+        # Header section (always visible)
+        header_widget = QWidget()
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(16, 8, 16, 8)
+        header_layout.setSpacing(12)
+
+        # Left section: Controller info
         left_section = QHBoxLayout()
         left_section.setSpacing(8)
-        
-        # Controller icon (non-interactive, smaller)
+
+        # Controller icon
         self.controller_icon = QLabel("🎮")
         self.controller_icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.controller_icon.setStyleSheet(f"""
@@ -751,12 +760,12 @@ class EnhancedControllerCard(QFrame):
                 max-width: 18px;
             }}
         """)
-        
+
         # Controller info container
         info_container = QVBoxLayout()
         info_container.setSpacing(2)
-        
-        # Controller name (non-interactive, smaller)
+
+        # Controller name
         name_label = QLabel(self.controller.name)
         name_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         name_font = QFont()
@@ -764,37 +773,52 @@ class EnhancedControllerCard(QFrame):
         name_font.setWeight(QFont.Weight.DemiBold)
         name_label.setFont(name_font)
         name_label.setStyleSheet(f"color: {theme_manager.get_color('text_primary')};")
-        
-        # Input method badge (smaller, inline)
+
+        # Input method selector (ComboBox)
+        self.input_method_combo = QComboBox()
+        self.input_method_combo.addItems(["XInput", "DInput"])
         input_method = getattr(self.controller, 'preferred_input_method', 'XINPUT')
-        method_display = input_method.value if hasattr(input_method, 'value') else input_method
-        
-        method_label = QLabel(method_display)
-        method_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        method_label.setStyleSheet(f"""
-            QLabel {{
-                color: {theme_manager.get_color('text_secondary')};
-                font-size: 9px;
+        method_str = input_method.value if hasattr(input_method, 'value') else str(input_method)
+        self.input_method_combo.setCurrentText("XInput" if "xinput" in method_str.lower() else "DInput")
+        self.input_method_combo.setStyleSheet(f"""
+            QComboBox {{
                 background-color: {theme_manager.get_color('secondary')};
+                color: {theme_manager.get_color('text_primary')};
+                border: 1px solid {theme_manager.get_color('border_secondary')};
                 border-radius: 4px;
                 padding: 1px 4px;
+                font-size: 9px;
                 font-weight: 500;
+                min-width: 60px;
+            }}
+            QComboBox:hover {{
+                border-color: {theme_manager.get_color('primary')};
+            }}
+            QComboBox::drop-down {{
+                border: none;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {theme_manager.get_color('card_bg')};
+                border: 1px solid {theme_manager.get_color('border_primary')};
+                selection-background-color: {theme_manager.get_color('primary')};
+                font-size: 10px;
             }}
         """)
-        
+        self.input_method_combo.currentTextChanged.connect(self._on_input_method_changed)
+
         info_container.addWidget(name_label)
-        info_container.addWidget(method_label)
-        
+        info_container.addWidget(self.input_method_combo)
+
         left_section.addWidget(self.controller_icon)
         left_section.addLayout(info_container)
-        left_section.addStretch()  # Push everything to the left
-        
-        # Right section: Player number controls (Windows-standard horizontal layout)
+        left_section.addStretch()
+
+        # Right section: Player number controls
         right_section = QHBoxLayout()
         right_section.setSpacing(4)
         right_section.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # Player label (compact)
+
+        # Player label
         player_label = QLabel("Player:")
         player_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         player_label.setStyleSheet(f"""
@@ -804,42 +828,59 @@ class EnhancedControllerCard(QFrame):
                 font-weight: 500;
             }}
         """)
-        
+
         # Decrease button
         player_num = getattr(self.controller, 'assigned_number', 1) or 1
         self.decrease_button = QPushButton("−")
         self.decrease_button.setFixedSize(24, 24)
-        
-        # Player number display (compact)
+
+        # Player number display
         self.player_display = QLabel(str(player_num))
         self.player_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.player_display.setFixedSize(32, 24)
         self.player_display.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        
+
         # Increase button
         self.increase_button = QPushButton("＋")
         self.increase_button.setFixedSize(24, 24)
-        
-        # Apply Windows-standard button styling
+
+        # Apply styling
         player_colors = self._get_player_colors(player_num)
         self._update_player_controls_styling(player_colors)
-        
+
         self.decrease_button.clicked.connect(self._decrement_player)
         self.increase_button.clicked.connect(self._increment_player)
-        
+
         # Store current player number
         self.current_player_num = player_num
-        
+
         right_section.addWidget(player_label)
         right_section.addWidget(self.decrease_button)
         right_section.addWidget(self.player_display)
         right_section.addWidget(self.increase_button)
-        
-        # Add sections to main layout
-        main_layout.addLayout(left_section, 1)
-        main_layout.addLayout(right_section, 0)
-        
-        self.setLayout(main_layout)
+
+        # Add sections to header layout
+        header_layout.addLayout(left_section, 1)
+        header_layout.addLayout(right_section, 0)
+
+        header_widget.setLayout(header_layout)
+        card_layout.addWidget(header_widget)
+
+        # Input preview section (always visible, text-only)
+        self.preview_label = QLabel("No input")
+        self.preview_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme_manager.get_color('text_secondary')};
+                font-size: 9px;
+                font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+                padding: 4px 16px;
+                background-color: {theme_manager.get_color('input_bg')};
+            }}
+        """)
+        self.preview_label.setWordWrap(True)
+        card_layout.addWidget(self.preview_label)
+
+        self.setLayout(card_layout)
     
     def _get_player_colors(self, player_num: int) -> dict:
         """Get color scheme based on player number."""
@@ -943,8 +984,8 @@ class EnhancedControllerCard(QFrame):
                 border-color: {theme_manager.get_color('border_primary')};
             }}
         """)
-        self.setFixedHeight(56)  # Windows-standard list item height
-        
+        self.setMinimumHeight(80)  # Increased for preview text
+
         # Update icon color to match new size
         self.controller_icon.setStyleSheet(f"""
             QLabel {{
@@ -954,6 +995,18 @@ class EnhancedControllerCard(QFrame):
                 max-width: 18px;
             }}
         """)
+
+        # Update preview label styling
+        if hasattr(self, 'preview_label'):
+            self.preview_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme_manager.get_color('text_secondary')};
+                    font-size: 9px;
+                    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+                    padding: 4px 16px;
+                    background-color: {theme_manager.get_color('input_bg')};
+                }}
+            """)
     
     
     def _increment_player(self):
@@ -970,14 +1023,51 @@ class EnhancedControllerCard(QFrame):
         """Update player number and UI with Windows-standard styling."""
         self.current_player_num = value
         self.player_display.setText(str(value))
-        
+
         # Update colors based on new player number
         player_colors = self._get_player_colors(value)
         self._update_player_controls_styling(player_colors)
-        
+
         # Emit signal
         controller_id = getattr(self.controller, 'identifier', f'{self.controller.guid}_{self.controller.device_id}')
         self.controller_number_changed.emit(controller_id, value)
+
+    def _on_input_method_changed(self, method_text: str):
+        """Handle input method selection change."""
+        # Convert display text to enum value
+        method_value = "xinput" if method_text == "XInput" else "dinput"
+
+        # Emit signal
+        controller_id = getattr(self.controller, 'identifier', f'{self.controller.guid}_{self.controller.device_id}')
+        self.input_method_changed.emit(controller_id, method_value)
+
+    def update_input_preview(self, button_states: Dict[str, bool], axis_values: Dict[str, float]):
+        """Update the controller input preview with text display."""
+        # Build compact text representation
+        pressed_buttons = [k.upper() for k, v in button_states.items() if v]
+
+        # Show active axes
+        active_axes = []
+        if abs(axis_values.get("left_x", 0)) > 0.1 or abs(axis_values.get("left_y", 0)) > 0.1:
+            active_axes.append(f"LS({axis_values.get('left_x', 0):.2f},{axis_values.get('left_y', 0):.2f})")
+        if abs(axis_values.get("right_x", 0)) > 0.1 or abs(axis_values.get("right_y", 0)) > 0.1:
+            active_axes.append(f"RS({axis_values.get('right_x', 0):.2f},{axis_values.get('right_y', 0):.2f})")
+        if axis_values.get("left_trigger", 0) > 0.1:
+            active_axes.append(f"LT({axis_values.get('left_trigger', 0):.2f})")
+        if axis_values.get("right_trigger", 0) > 0.1:
+            active_axes.append(f"RT({axis_values.get('right_trigger', 0):.2f})")
+
+        # Combine into display text
+        parts = []
+        if pressed_buttons:
+            parts.append(" ".join(pressed_buttons))
+        if active_axes:
+            parts.append(" ".join(active_axes))
+
+        if parts:
+            self.preview_label.setText(" | ".join(parts))
+        else:
+            self.preview_label.setText("No input")
 
 
 class EnhancedVirtualControllerCard(QFrame):

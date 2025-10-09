@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Callable, Dict, List, Optional
 
-from input_link.models import ControllerInputData
+from input_link.models import ControllerInputData, InputMethod
 from input_link.virtual.base import VirtualController, VirtualControllerFactory
 
 logger = logging.getLogger(__name__)
@@ -168,10 +168,10 @@ class VirtualControllerManager:
 
     async def update_controller_state(self, input_data: ControllerInputData) -> bool:
         """Update virtual controller state with input data.
-        
+
         Args:
             input_data: Controller input data
-            
+
         Returns:
             True if updated successfully, False otherwise
         """
@@ -186,8 +186,11 @@ class VirtualControllerManager:
             self.auto_create and
             (self.max_controllers is None or len(self._controllers) < self.max_controllers)):
 
-            logger.info(f"Auto-creating virtual controller {controller_number}")
-            if not await self.create_controller(controller_number):
+            # Map input_method to controller_type for vgamepad
+            controller_type = self._map_input_method_to_controller_type(input_data.input_method)
+
+            logger.info(f"Auto-creating virtual controller {controller_number} with type {controller_type} (input_method: {input_data.input_method})")
+            if not await self.create_controller(controller_number, controller_type=controller_type):
                 return False
 
         # Get controller
@@ -202,6 +205,23 @@ class VirtualControllerManager:
 
         # Update controller state
         return await controller.update_state(input_data)
+
+    def _map_input_method_to_controller_type(self, input_method: InputMethod) -> str:
+        """Map InputMethod enum to vgamepad controller_type.
+
+        Args:
+            input_method: Input method from sender (XINPUT or DINPUT)
+
+        Returns:
+            Controller type string for vgamepad ("xbox360" or "ds4")
+        """
+        # Map input methods to vgamepad controller types
+        # XINPUT -> xbox360 (XInput-compatible)
+        # DINPUT -> ds4 (DirectInput-compatible, using DualShock 4 emulation)
+        if input_method == InputMethod.XINPUT or (hasattr(input_method, 'value') and input_method.value == 'xinput'):
+            return "xbox360"
+        else:  # DINPUT
+            return "ds4"
 
     async def reset_controller(self, controller_number: int) -> bool:
         """Reset virtual controller to neutral state.

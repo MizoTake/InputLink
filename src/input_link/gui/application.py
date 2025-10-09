@@ -6,7 +6,7 @@ import asyncio
 import sys
 from typing import Dict, Optional
 
-from PySide6.QtCore import QThread, Signal, Slot
+from PySide6.QtCore import QThread, Signal, Slot, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QStackedWidget
 
@@ -27,6 +27,7 @@ class AsyncWorker(QThread):
     sender_status_changed = Signal(str, str)  # status, color
     receiver_status_changed = Signal(str, str) # status, color
     log_message = Signal(str)
+    input_preview_update = Signal(str, dict, dict)  # controller_id, button_states, axis_values
 
     # Map sender status to display text and colors (kept identical)
     STATUS_MAP = {
@@ -45,7 +46,7 @@ class AsyncWorker(QThread):
         self.controller_manager: Optional[ControllerManager] = None
         self._stop_requested = False
         self.loop: Optional[asyncio.AbstractEventLoop] = None
-        
+
         # Initialize GUI logging
         self.logger = setup_application_logging(
             app_name="gui",
@@ -66,6 +67,10 @@ class AsyncWorker(QThread):
             "max_controllers": 4,
             "auto_create": True,
         }
+
+        # Preview polling (independent of capture)
+        self._preview_timer = None
+        self._preview_joysticks = {}
 
     def run(self):
         """Run the async event loop in this thread."""
@@ -116,6 +121,10 @@ class AsyncWorker(QThread):
     def _sender_status_callback(self, status: str):
         display_status, color = self.STATUS_MAP.get(status, ("Unknown", "#8E8E93"))
         self.sender_status_changed.emit(display_status, color)
+
+    def _sender_input_preview_callback(self, controller_id: str, button_states: dict, axis_values: dict):
+        """Forward input preview data to GUI."""
+        self.input_preview_update.emit(controller_id, button_states, axis_values)
 
     def _receiver_log_callback(self, level: str, message: str):
         self.log_message.emit(f"[Receiver] {message}")
@@ -174,6 +183,10 @@ class AsyncWorker(QThread):
 
         self.log_message.emit(f"Found {len(connected_controllers)} connected controllers")
         print("log_message signal emitted")
+
+        # Start preview polling for detected controllers
+        self._start_preview_polling(connected_controllers)
+
         print(f"=== AsyncWorker.scan_controllers() DEBUG END ===\n")
 
     @Slot()
@@ -206,6 +219,7 @@ class AsyncWorker(QThread):
         self.sender_app = SenderApp(
             log_callback=self._sender_log_callback,
             status_callback=self._sender_status_callback,
+            input_preview_callback=self._sender_input_preview_callback,
             verbose=False,
         )
         # Inject config prepared from UI
@@ -288,6 +302,18 @@ class AsyncWorker(QThread):
                         self.sender_app.set_controller_number(cid, int(entry["number"]))
                 except Exception:
                     pass
+        elif t == "input_method":
+            cid = payload.get("controller_id")
+            method = payload.get("input_method")
+            if cid and method:
+                entry = self.sender_settings["controllers"].setdefault(cid, {"enabled": True, "number": 1})
+                entry["input_method"] = method
+                # Live-apply input method change if sender is running
+                try:
+                    if self.sender_app and self.sender_app.running:
+                        self.sender_app.set_controller_input_method(cid, method)
+                except Exception:
+                    pass
 
     @Slot(str, bool)
     def on_sender_controller_enabled(self, controller_id: str, enabled: bool):
@@ -337,6 +363,104 @@ class AsyncWorker(QThread):
             # Keep existing behavior: print errors to stdout
             print(f"Error scheduling coroutine: {e}")
             return None
+
+    def _start_preview_polling(self, controllers):
+        """Start polling controller inputs for preview (independent of capture)."""
+        import pygame
+
+        # Stop existing timer
+        if self._preview_timer:
+            self._preview_timer.stop()
+            self._preview_timer = None
+
+        # Clear old joysticks
+        self._preview_joysticks.clear()
+
+        if not controllers:
+            return
+
+        # Ensure pygame and joystick subsystem are initialized
+        if not pygame.get_init():
+            pygame.init()
+        if not pygame.joystick.get_init():
+            pygame.joystick.init()
+
+        # Initialize joysticks for preview
+        for controller in controllers:
+            try:
+                joystick = pygame.joystick.Joystick(controller.pygame_id)
+                joystick.init()
+                self._preview_joysticks[controller.identifier] = (controller, joystick)
+            except Exception as e:
+                print(f"Failed to init joystick for preview: {e}")
+
+        # Create timer for polling (60 Hz)
+        if self._preview_joysticks:
+            self._preview_timer = QTimer()
+            self._preview_timer.timeout.connect(self._poll_preview_inputs)
+            self._preview_timer.start(16)  # ~60 Hz
+
+    def _poll_preview_inputs(self):
+        """Poll controller inputs for preview display."""
+        import pygame
+        from input_link.models import ButtonState, ControllerState
+
+        # Check if pygame is still initialized before polling
+        if not pygame.get_init() or not pygame.joystick.get_init():
+            # Stop the timer if pygame has been shut down
+            if self._preview_timer:
+                self._preview_timer.stop()
+                self._preview_timer = None
+            return
+
+        try:
+            pygame.event.pump()  # Update pygame state
+        except Exception as e:
+            print(f"Error updating pygame state: {e}")
+            return
+
+        for controller_id, (controller, joystick) in list(self._preview_joysticks.items()):
+            try:
+                # Read button states
+                button_states = {
+                    "a": joystick.get_button(0) if joystick.get_numbuttons() > 0 else False,
+                    "b": joystick.get_button(1) if joystick.get_numbuttons() > 1 else False,
+                    "x": joystick.get_button(2) if joystick.get_numbuttons() > 2 else False,
+                    "y": joystick.get_button(3) if joystick.get_numbuttons() > 3 else False,
+                    "lb": joystick.get_button(4) if joystick.get_numbuttons() > 4 else False,
+                    "rb": joystick.get_button(5) if joystick.get_numbuttons() > 5 else False,
+                    "back": joystick.get_button(6) if joystick.get_numbuttons() > 6 else False,
+                    "start": joystick.get_button(7) if joystick.get_numbuttons() > 7 else False,
+                    "ls": joystick.get_button(8) if joystick.get_numbuttons() > 8 else False,
+                    "rs": joystick.get_button(9) if joystick.get_numbuttons() > 9 else False,
+                    "dpad_up": False,
+                    "dpad_down": False,
+                    "dpad_left": False,
+                    "dpad_right": False,
+                }
+
+                # Read D-pad from hat
+                if joystick.get_numhats() > 0:
+                    hat = joystick.get_hat(0)
+                    button_states["dpad_up"] = hat[1] == 1
+                    button_states["dpad_down"] = hat[1] == -1
+                    button_states["dpad_left"] = hat[0] == -1
+                    button_states["dpad_right"] = hat[0] == 1
+
+                # Read axes
+                axis_values = {
+                    "left_x": joystick.get_axis(0) if joystick.get_numaxes() > 0 else 0.0,
+                    "left_y": joystick.get_axis(1) if joystick.get_numaxes() > 1 else 0.0,
+                    "right_x": joystick.get_axis(2) if joystick.get_numaxes() > 2 else 0.0,
+                    "right_y": joystick.get_axis(3) if joystick.get_numaxes() > 3 else 0.0,
+                    "left_trigger": joystick.get_axis(4) if joystick.get_numaxes() > 4 else 0.0,
+                    "right_trigger": joystick.get_axis(5) if joystick.get_numaxes() > 5 else 0.0,
+                }
+
+                # Emit preview update
+                self.input_preview_update.emit(controller_id, button_states, axis_values)
+            except Exception as e:
+                print(f"Error polling preview input: {e}")
 
 
 class InputLinkApplication(QApplication):
@@ -439,6 +563,7 @@ class InputLinkApplication(QApplication):
         self.async_worker.sender_status_changed.connect(self._on_sender_status_changed)
         self.async_worker.receiver_status_changed.connect(self._on_receiver_status_changed)
         self.async_worker.log_message.connect(self._on_log_message)
+        self.async_worker.input_preview_update.connect(self._on_input_preview_update)
 
         # Start worker
         self.async_worker.start()
@@ -598,6 +723,12 @@ class InputLinkApplication(QApplication):
         """Handle log messages."""
         self.main_window.add_log_message(message)
         self.receiver_window.add_log_message(message)
+
+    @Slot(str, dict, dict)
+    def _on_input_preview_update(self, controller_id: str, button_states: dict, axis_values: dict):
+        """Handle input preview updates."""
+        if self.sender_window:
+            self.sender_window.update_controller_input_preview(controller_id, button_states, axis_values)
 
     def _on_about_to_quit(self):
         """Ensure background threads and loops stop before app exit."""

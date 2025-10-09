@@ -356,6 +356,7 @@ class SenderWindow(QMainWindow):
             print(f"Creating card for controller [{i}]: {controller.name}")
             card = EnhancedControllerCard(controller)
             card.controller_number_changed.connect(self._on_controller_number_changed)
+            card.input_method_changed.connect(self._on_input_method_changed)
             self.controller_cards.append(card)
             self.controller_scroll_area.add_card(card)
             print(f"Card created and added - Total cards: {len(self.controller_cards)}")
@@ -377,6 +378,22 @@ class SenderWindow(QMainWindow):
             "controller_id": controller_id,
             "number": number,
         })
+
+    def _on_input_method_changed(self, controller_id: str, input_method: str):
+        """Emit settings change when input method changes."""
+        self.settings_changed.emit({
+            "type": "input_method",
+            "controller_id": controller_id,
+            "input_method": input_method,
+        })
+
+    def update_controller_input_preview(self, controller_id: str, button_states: dict, axis_values: dict):
+        """Update input preview for a specific controller."""
+        for card in self.controller_cards:
+            card_controller_id = getattr(card.controller, 'identifier', f'{card.controller.guid}_{card.controller.device_id}')
+            if card_controller_id == controller_id:
+                card.update_input_preview(button_states, axis_values)
+                break
 
     def _emit_settings(self):
         """Emit current sender settings (host/port/polling)."""
