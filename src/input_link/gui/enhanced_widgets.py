@@ -720,7 +720,6 @@ class EnhancedControllerCard(QFrame):
     """Enhanced controller card with clean vertical layout design."""
 
     controller_number_changed = Signal(str, int)  # controller_id, player number
-    input_method_changed = Signal(str, str)  # controller_id, input_method
 
     def __init__(self, controller):
         super().__init__()
@@ -774,40 +773,7 @@ class EnhancedControllerCard(QFrame):
         name_label.setFont(name_font)
         name_label.setStyleSheet(f"color: {theme_manager.get_color('text_primary')};")
 
-        # Input method selector (ComboBox)
-        self.input_method_combo = QComboBox()
-        self.input_method_combo.addItems(["XInput", "DInput"])
-        input_method = getattr(self.controller, 'preferred_input_method', 'XINPUT')
-        method_str = input_method.value if hasattr(input_method, 'value') else str(input_method)
-        self.input_method_combo.setCurrentText("XInput" if "xinput" in method_str.lower() else "DInput")
-        self.input_method_combo.setStyleSheet(f"""
-            QComboBox {{
-                background-color: {theme_manager.get_color('secondary')};
-                color: {theme_manager.get_color('text_primary')};
-                border: 1px solid {theme_manager.get_color('border_secondary')};
-                border-radius: 4px;
-                padding: 1px 4px;
-                font-size: 9px;
-                font-weight: 500;
-                min-width: 60px;
-            }}
-            QComboBox:hover {{
-                border-color: {theme_manager.get_color('primary')};
-            }}
-            QComboBox::drop-down {{
-                border: none;
-            }}
-            QComboBox QAbstractItemView {{
-                background-color: {theme_manager.get_color('card_bg')};
-                border: 1px solid {theme_manager.get_color('border_primary')};
-                selection-background-color: {theme_manager.get_color('primary')};
-                font-size: 10px;
-            }}
-        """)
-        self.input_method_combo.currentTextChanged.connect(self._on_input_method_changed)
-
         info_container.addWidget(name_label)
-        info_container.addWidget(self.input_method_combo)
 
         left_section.addWidget(self.controller_icon)
         left_section.addLayout(info_container)
@@ -1031,15 +997,6 @@ class EnhancedControllerCard(QFrame):
         # Emit signal
         controller_id = getattr(self.controller, 'identifier', f'{self.controller.guid}_{self.controller.device_id}')
         self.controller_number_changed.emit(controller_id, value)
-
-    def _on_input_method_changed(self, method_text: str):
-        """Handle input method selection change."""
-        # Convert display text to enum value
-        method_value = "xinput" if method_text == "XInput" else "dinput"
-
-        # Emit signal
-        controller_id = getattr(self.controller, 'identifier', f'{self.controller.guid}_{self.controller.device_id}')
-        self.input_method_changed.emit(controller_id, method_value)
 
     def update_input_preview(self, button_states: Dict[str, bool], axis_values: Dict[str, float]):
         """Update the controller input preview with text display."""

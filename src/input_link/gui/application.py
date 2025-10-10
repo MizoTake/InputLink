@@ -197,19 +197,14 @@ class AsyncWorker(QThread):
             self.log_message.emit("Sender is already running.")
             return
         # Build config from current UI settings
-        from input_link.models import ConfigModel, SenderConfig, ReceiverConfig, ControllerConfig, InputMethod
+        from input_link.models import ConfigModel, SenderConfig, ReceiverConfig, ControllerConfig
         controllers_cfg = {}
         for cid, entry in self.sender_settings.get("controllers", {}).items():
             if not entry.get("enabled", False):
                 continue
 
-            # Parse input_method from string to enum
-            input_method_str = entry.get("input_method", "xinput").lower()
-            input_method = InputMethod.XINPUT if input_method_str == "xinput" else InputMethod.DINPUT
-
             controllers_cfg[cid] = ControllerConfig(
                 assigned_number=entry.get("number", 1),
-                input_method=input_method,
                 enabled=True,
             )
         cfg = ConfigModel(
@@ -306,18 +301,6 @@ class AsyncWorker(QThread):
                 try:
                     if self.sender_app and self.sender_app.running:
                         self.sender_app.set_controller_number(cid, int(entry["number"]))
-                except Exception:
-                    pass
-        elif t == "input_method":
-            cid = payload.get("controller_id")
-            method = payload.get("input_method")
-            if cid and method:
-                entry = self.sender_settings["controllers"].setdefault(cid, {"enabled": True, "number": 1})
-                entry["input_method"] = method
-                # Live-apply input method change if sender is running
-                try:
-                    if self.sender_app and self.sender_app.running:
-                        self.sender_app.set_controller_input_method(cid, method)
                 except Exception:
                     pass
 
