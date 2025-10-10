@@ -62,41 +62,8 @@ jobs:
           dist/InputLink-Receiver.exe
           dist/InputLink-GUI.exe
 
-  build-macos:
-    runs-on: macos-latest
-    if: startsWith(github.ref, 'refs/tags/')
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[build]"
-    
-    - name: Build macOS applications
-      run: python scripts/build/build.py
-    
-    - name: Create DMG installer
-      run: python scripts/build/installer/create_macos_dmg.py
-    
-    - name: Upload macOS artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: macos-applications
-        path: |
-          dist/InputLink-Sender.app
-          dist/InputLink-Receiver.app
-          dist/InputLink-GUI.app
-          InputLink-*.dmg
-
   release:
-    needs: [build-windows, build-macos]
+    needs: [build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     
@@ -112,30 +79,19 @@ jobs:
       with:
         name: windows-executables
         path: dist/windows/
-    
-    - name: Download macOS artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: macos-applications
-        path: dist/macos/
-    
+
     - name: Create release archives
       run: |
         cd dist
-        
+
         # Create Windows archive
         zip -r "InputLink-${{ steps.tag.outputs.TAG_NAME }}-Windows.zip" windows/
-        
-        # Create macOS archive
-        tar -czf "InputLink-${{ steps.tag.outputs.TAG_NAME }}-macOS.tar.gz" -C macos .
-    
+
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
           dist/InputLink-${{ steps.tag.outputs.TAG_NAME }}-Windows.zip
-          dist/InputLink-${{ steps.tag.outputs.TAG_NAME }}-macOS.tar.gz
-          dist/macos/InputLink-*.dmg
         draft: false
         prerelease: ${{ contains(steps.tag.outputs.TAG_NAME, 'beta') || contains(steps.tag.outputs.TAG_NAME, 'alpha') }}
         generate_release_notes: true

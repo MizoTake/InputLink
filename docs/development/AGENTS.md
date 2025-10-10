@@ -1,9 +1,10 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Source code lives in `src/input_link/` with subpackages: `core/` (logic, I/O), `network/` (WebSocket client/server), `gui/` (PySide6 UI), `apps/` (CLI/GUI entry modules), `virtual/` (platform adapters), and `models/` (Pydantic configs, data models).
+- Source code lives in `src/input_link/` with subpackages: `core/` (logic, I/O), `network/` (WebSocket client/server), `gui/` (PySide6 UI), `apps/` (CLI/GUI entry modules), `virtual/` (Windows virtual controller), and `models/` (Pydantic configs, data models).
 - Tests are in `tests/`: `tests/unit/` for fast logic tests, `tests/integration/` for end‑to‑end flows.
 - Entry points: `main.py` (CLI group) and console scripts `input-link-sender` and `input-link-receiver`.
+- **Windows-only**: This project currently supports Windows only.
 
 ## Build, Test, and Development Commands
 - `make install-dev` — Install package with dev/test/build extras.
@@ -29,6 +30,7 @@
 - PRs: include what/why, linked issues, test plan, and screenshots for GUI changes. Keep diffs focused.
 
 ## Security & Configuration Tips
-- Windows-only dependency `vgamepad` powers virtual controllers; GUI requires `PySide6`. Install via `make install-dev`.
+- Virtual controllers use `vgamepad` with ViGEm Bus Driver (Windows only); GUI requires `PySide6`. Install via `make install-dev`.
+- Receiver side requires ViGEm Bus Driver for virtual controller creation.
 - Use `--config <path>` with sender/receiver to load settings. Do not commit secrets; prefer local config files ignored by VCS.
 

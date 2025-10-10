@@ -68,12 +68,12 @@ python main.py sender --list-controllers
 
 ### Building
 ```bash
-# Build executables for current platform
+# Build executables for Windows
 make build
 
-# Platform-specific builds
-make build-windows  # Windows only
-make build-macos    # macOS only
+# Windows-specific build
+make build-windows
+scripts\build\build.bat
 
 # Clean build artifacts
 make clean
@@ -81,7 +81,7 @@ make clean
 
 ## Project Architecture
 
-**Input Link** is a Network Controller Forwarding System that captures gamepad inputs on a sender PC and forwards them via WebSocket to a receiver PC for virtual controller simulation.
+**Input Link** is a Network Controller Forwarding System that captures gamepad inputs on a sender PC and forwards them via WebSocket to a receiver PC for virtual controller simulation. **Currently Windows-only.**
 
 ### Core Components
 
@@ -101,7 +101,6 @@ make clean
 4. **Virtual Controllers** (`src/input_link/virtual/`):
    - `VirtualControllerFactory`: Platform-specific controller creation
    - `WindowsVirtualController`: ViGEm/vgamepad integration (Xbox 360 emulation)
-   - `MacOSVirtualController`: Keyboard simulation fallback
    - `VirtualControllerManager`: Multi-controller lifecycle management
 
 5. **Applications** (`src/input_link/apps/` & `src/input_link/gui/`):
@@ -126,8 +125,7 @@ make clean
 
 **Platform Integration**:
 - vgamepad (Windows virtual controllers via ViGEm)
-- pynput (macOS keyboard simulation)
-- PySide6 (cross-platform Qt GUI)
+- PySide6 (Qt GUI)
 
 **Development**:
 - pytest with asyncio support
@@ -154,8 +152,7 @@ make clean
 - Controller state tracking through `ControllerConnectionState` enum
 
 ### Working with Virtual Controllers
-- Windows: Uses ViGEm Bus Driver for Xbox 360 emulation via `vgamepad`
-- macOS: Keyboard simulation (WASD + space) via `pynput`
+- Uses ViGEm Bus Driver for Xbox 360 emulation via `vgamepad` (Windows only)
 - Auto-creation up to configured maximum in `VirtualControllerManager`
 - 1:1 mapping from sender controller numbers to receiver virtual controllers
 - Factory pattern implementation in `VirtualControllerFactory.create_controller()`
@@ -191,9 +188,9 @@ make clean
 ## Important Notes
 
 ### Platform Considerations
-- Windows requires ViGEm Bus Driver for virtual controllers
-- macOS requires accessibility permissions for input simulation
-- Cross-platform pygame controller support
+- **Windows-only**: This project currently supports Windows only
+- Requires ViGEm Bus Driver for virtual controllers (receiver side)
+- pygame for controller input detection
 
 ### Network Protocol
 - JSON messages over WebSocket
@@ -203,7 +200,7 @@ make clean
 ### Build System
 - PyInstaller creates standalone executables
 - Three builds: Sender, Receiver, unified GUI
-- Platform-specific installers (NSIS/DMG)
+- Windows-only builds
 - GitHub Actions for automated releases
 
 ## Key Implementation Patterns

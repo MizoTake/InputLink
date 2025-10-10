@@ -2,17 +2,17 @@
 
  ローカルネットワーク上で、送信側PCのゲームコントローラー入力を受信側PCへWebSocket経由で転送するシステムです。
 
-## ⚠️ 重要: Windows受信側の要件
+## ⚠️ 重要: Windowsの要件
 
-**Windows PCで受信側（Receiver）として使用する場合、ViGEm Bus Driverが必要です。**
+**現在、このプロジェクトはWindows専用です。**
 
-- **ViGEm Bus Driver**: 仮想Xbox 360コントローラーを作成するためのカーネルドライバー
-- **ダウンロード**: https://github.com/ViGEm/ViGEmBus/releases/latest
-- **公式サイト**: https://vigembusdriver.com
+- **受信側（Receiver）**: ViGEm Bus Driverが必要です
+  - **ViGEm Bus Driver**: 仮想Xbox 360コントローラーを作成するためのカーネルドライバー
+  - **ダウンロード**: https://github.com/ViGEm/ViGEmBus/releases/latest
+  - **公式サイト**: https://vigembusdriver.com
+  - インストーラー版を使用する場合、セットアップ時に自動的にViGEmドライバーのインストールが案内されます
 
-インストーラー版を使用する場合、セットアップ時に自動的にViGEmドライバーのインストールが案内されます。
-
-> **注意**: 送信側（Sender）のみで使用する場合は不要です。macOSでは代替のキーボードシミュレーション方式を使用するため、ViGEmは不要です。
+> **注意**: 送信側（Sender）のみで使用する場合、ViGEmドライバーは不要です。
 
 ## 📚 ドキュメント
 
@@ -26,10 +26,10 @@
 
 ## 特長
 
-- **クロスプラットフォーム対応**（Windows / macOS）
+- **Windows専用**（現在はWindows環境のみサポート）
 - **低遅延なリアルタイム入力転送**（60Hz polling）
 - **DInput / XInput コントローラーに対応**
-- **受信側での仮想コントローラー**（Windows: ViGEm / vgamepad）
+- **受信側での仮想コントローラー**（ViGEm / vgamepad）
 - **自動再接続を含む堅牢なWebSocket通信**
 - **複数コントローラーに対応**（内部制限なし。実際の上限はOS/アプリ依存）
 - **Apple HIG準拠のGUI**（PySide6 / Qt）
@@ -42,14 +42,10 @@
 ### 事前ビルド済み実行ファイルの利用
 
 **Windows:**
-1. [Releases](../../releases) から `InputLink-Windows-Installer.exe` をダウンロード
-2. インストーラーを実行（ViGEmドライバーのセットアップを含みます）
-3. スタートメニューから「Input Link Sender」「Input Link Receiver」を起動
-
-**macOS:**
-1. [Releases](../../releases) から `InputLink-macOS.dmg` をダウンロード
-2. DMGをマウントし、アプリをApplicationsへドラッグ
-3. Applications / Launchpad から起動
+1. [Releases](../../releases) から `InputLink-Windows.zip` をダウンロード
+2. ZIPファイルを展開
+3. ViGEm Bus Driverをインストール（受信側で使用する場合）
+4. 各実行ファイル（`InputLink-Sender.exe`, `InputLink-Receiver.exe`, `InputLink-GUI.exe`）を起動
 
 ### コマンドラインでの利用
 
@@ -128,9 +124,8 @@ make build
 make clean
 ```
 
-プラットフォーム別ビルド:
-- Windows: `build\build.bat` または `make build-windows`
-- macOS: `./build/build.sh` または `make build-macos`
+Windowsビルド:
+- `scripts\build\build.bat` または `make build-windows`
 
 詳細は [BUILD.md](docs/development/BUILD.md) を参照してください。
 
@@ -172,12 +167,9 @@ make clean
 ### Windows
 - 仮想コントローラー: ViGEm Bus Driver（Xbox 360エミュレーション）
 - 入力方式: DirectInput / XInput
-- 要件: Windows 10/11、ViGEmドライバー（インストーラーで導入）
+- 要件: Windows 10/11、ViGEmドライバー（受信側で必要）
 
-### macOS
-- 仮想コントローラー: キーボードシミュレーション（WASD等）
-- 入力方式: pygame経由の汎用HID
-- 要件: macOS 10.12+、アクセシビリティ権限
+> **注意**: 現在はWindows専用です。macOSサポートは将来のバージョンで検討中です。
 
 ## 設定
 
@@ -224,14 +216,11 @@ pytest -m e2e         # E2Eテスト
 
 - https://hardwaretester.com/gamepad
 
-手順（Windows）:
+手順:
 - 受信側を起動（vgamepad/ViGEmで仮想コントローラーが作成されます）
 - 送信側を起動して受信側へ接続
 - 上記リンクを受信側PCの Chromium / Edge / Firefox で開く
 - 仮想の「Xbox 360 Controller」が検出され、ボタンやスティック操作が反映されます
-
-補足:
-- macOS実装はキーボードマッピングによるシミュレーションのため、ブラウザのゲームパッドテスターでは検出されません。ログや想定キーイベントで確認してください。
 
 ## コントリビュート
 
@@ -264,11 +253,10 @@ make clean             # 生成物のクリーン
   - `--host` で受信側PCのLAN IPを指定（例: `192.168.1.50`）
   - 例: `input-link-sender --host 192.168.1.50 --port 8765`
 
-LAN IPの確認例（受信側PC）:
-- Windows: コマンドプロンプトで `ipconfig` を実行し、使用中のアダプタの IPv4 アドレスを確認
-- macOS: ターミナルで `ipconfig getifaddr en0`（Wi‑Fi） 等
+LAN IPの確認例（Windows）:
+- コマンドプロンプトで `ipconfig` を実行し、使用中のアダプタの IPv4 アドレスを確認
 
-ファイアウォールの許可が必要な場合があります（特にWindows）。
+ファイアウォールの許可が必要な場合があります。
 
 ### コントローラー番号の1:1対応（Sender→Receiver）
 

@@ -1,9 +1,10 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Source lives in `src/input_link/` with subpackages: `apps/` (CLI/GUI entry), `core/` (input, control, logging), `gui/` (PySide6 UI), `models/` (Pydantic configs), `network/` (WebSocket), `virtual/` (OS adapters).
+- Source lives in `src/input_link/` with subpackages: `apps/` (CLI/GUI entry), `core/` (input, control, logging), `gui/` (PySide6 UI), `models/` (Pydantic configs), `network/` (WebSocket), `virtual/` (Windows virtual controller).
 - Entrypoints: console scripts `input-link-sender`, `input-link-receiver`; CLI aggregator `main.py`.
-- Tests in `tests/` (`unit/`, `integration/`, `e2e/`). Docs in `docs/`. Build helpers in `build/` (`build.sh`, `build.bat`).
+- Tests in `tests/` (`unit/`, `integration/`, `e2e/`). Docs in `docs/`. Build helpers in `scripts/build/` (`build.bat`).
+- **Windows-only**: This project currently supports Windows only.
 
 ## Build, Test, and Development Commands
 - `make install-dev` — editable install with dev/test/build extras.
@@ -72,6 +73,7 @@ python -m pstats profile.stats  # analyze hotspots
    - Updated all unit tests to mock `pygame.event.pump()` for test environments
 
 ## Security & Configuration Tips
-- Windows-only virtual gamepad uses `vgamepad`; GUI requires `PySide6`. Install via `make install-dev`.
+- Virtual gamepad uses `vgamepad` with ViGEm Bus Driver (Windows only); GUI requires `PySide6`. Install via `make install-dev`.
+- Receiver side requires ViGEm Bus Driver for virtual controller creation.
 - Keep secrets out of VCS. Use `src/input_link/models/config.py`; pass configs with `--config <path>` when supported.
 
