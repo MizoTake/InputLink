@@ -197,13 +197,19 @@ class AsyncWorker(QThread):
             self.log_message.emit("Sender is already running.")
             return
         # Build config from current UI settings
-        from input_link.models import ConfigModel, SenderConfig, ReceiverConfig, ControllerConfig
+        from input_link.models import ConfigModel, SenderConfig, ReceiverConfig, ControllerConfig, InputMethod
         controllers_cfg = {}
         for cid, entry in self.sender_settings.get("controllers", {}).items():
             if not entry.get("enabled", False):
                 continue
+
+            # Parse input_method from string to enum
+            input_method_str = entry.get("input_method", "xinput").lower()
+            input_method = InputMethod.XINPUT if input_method_str == "xinput" else InputMethod.DINPUT
+
             controllers_cfg[cid] = ControllerConfig(
                 assigned_number=entry.get("number", 1),
+                input_method=input_method,
                 enabled=True,
             )
         cfg = ConfigModel(

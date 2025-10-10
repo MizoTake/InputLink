@@ -14,10 +14,13 @@ from .controller import InputMethod
 class ControllerConfig(BaseModel):
     """Individual controller configuration."""
 
-    assigned_number: int = Field(..., ge=1)
-    input_method: InputMethod = Field(default=InputMethod.XINPUT)
-    enabled: bool = Field(default=True)
-    display_name: Optional[str] = Field(default=None, max_length=100)
+    assigned_number: int = Field(..., ge=1, description="Controller player number (1-8)")
+    input_method: InputMethod = Field(
+        default=InputMethod.XINPUT,
+        description="Virtual controller type on receiver: XINPUT=Xbox360 for XInput games, DINPUT=DS4 for DirectInput games"
+    )
+    enabled: bool = Field(default=True, description="Whether this controller is enabled for input capture")
+    display_name: Optional[str] = Field(default=None, max_length=100, description="Custom display name for this controller")
 
 
 class WindowsConfig(BaseModel):

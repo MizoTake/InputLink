@@ -10,7 +10,15 @@ from pydantic import BaseModel, Field, computed_field, field_validator
 
 
 class InputMethod(str, Enum):
-    """Supported controller input methods."""
+    """Virtual controller output method for the receiver.
+
+    This determines what type of virtual gamepad will be created on the receiver:
+    - XINPUT: Creates Xbox 360 virtual controller (VX360Gamepad) - for games expecting XInput API
+    - DINPUT: Creates DualShock 4 virtual controller (VDS4Gamepad) - for games expecting DirectInput API
+
+    Note: This does NOT affect how the sender reads the physical controller.
+    Pygame auto-detects all controllers regardless of this setting.
+    """
     XINPUT = "xinput"
     DINPUT = "dinput"
 
@@ -62,7 +70,10 @@ class ControllerInputData(BaseModel):
 
     controller_number: int = Field(..., ge=1, description="Controller number assignment")
     controller_id: str = Field(..., min_length=1, description="Unique controller identifier")
-    input_method: InputMethod = Field(default=InputMethod.XINPUT)
+    input_method: InputMethod = Field(
+        default=InputMethod.XINPUT,
+        description="Virtual controller type to create on receiver (XInput=Xbox360, DInput=DS4)"
+    )
     buttons: ButtonState = Field(default_factory=ButtonState)
     axes: ControllerState = Field(default_factory=ControllerState)
     timestamp: Optional[float] = Field(default=None, description="Unix timestamp when input was captured")

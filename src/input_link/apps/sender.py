@@ -204,13 +204,18 @@ class SenderApp:
         controllers = self.controller_manager.scan_controllers()
         self.logger.info(f"Found {len(controllers)} controller(s)")
 
-        # Apply explicit controller number assignments from config if provided
+        # Apply explicit controller configurations from config if provided
         mappings = getattr(self.config.sender_config, "controllers", {})
         if mappings:
             for cid, ccfg in mappings.items():
                 if getattr(ccfg, "enabled", True):
                     # Assign desired number; will unassign previous owner if needed
                     self.controller_manager.assign_controller_number(cid, ccfg.assigned_number)
+
+                    # Apply input method if specified
+                    if hasattr(ccfg, "input_method"):
+                        self.controller_manager.set_input_method(cid, ccfg.input_method)
+                        self.logger.info(f"  - Applied input_method {ccfg.input_method.value} to {cid}")
                 else:
                     # Disabled: ensure no assignment remains
                     for c in controllers:

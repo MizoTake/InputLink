@@ -209,15 +209,18 @@ class VirtualControllerManager:
     def _map_input_method_to_controller_type(self, input_method: InputMethod) -> str:
         """Map InputMethod enum to vgamepad controller_type.
 
+        The input_method indicates what type of virtual controller the game expects:
+        - XINPUT: Games using XInput API (most modern games) -> Create Xbox 360 controller
+        - DINPUT: Games using DirectInput API (older games) -> Create DualShock 4 controller
+
         Args:
-            input_method: Input method from sender (XINPUT or DINPUT)
+            input_method: Virtual controller type requested by sender
 
         Returns:
-            Controller type string for vgamepad ("xbox360" or "ds4")
+            Controller type string for vgamepad:
+            - "xbox360": VX360Gamepad (XInput-compatible for modern games)
+            - "ds4": VDS4Gamepad (DirectInput-compatible for older games)
         """
-        # Map input methods to vgamepad controller types
-        # XINPUT -> xbox360 (XInput-compatible)
-        # DINPUT -> ds4 (DirectInput-compatible, using DualShock 4 emulation)
         if input_method == InputMethod.XINPUT or (hasattr(input_method, 'value') and input_method.value == 'xinput'):
             return "xbox360"
         else:  # DINPUT
