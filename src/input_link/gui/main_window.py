@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from input_link.models import ConfigModel
 from input_link.gui.theme_manager import theme_manager
 from input_link.gui.enhanced_widgets import (
-    AnimatedButton, EnhancedStatusCard, ThemeToggleButton,
+    AnimatedButton, EnhancedStatusCard,
     NetworkQualityWidget
 )
 
@@ -73,15 +73,13 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._setup_tray()
         self._setup_style()
-        
-        # Connect to theme changes
-        theme_manager.theme_changed.connect(self._setup_style)
 
     def _setup_ui(self):
         """Setup the main user interface."""
         self.setWindowTitle("Input Link")
-        self.setMinimumSize(520, 700)
-        self.resize(600, 750)
+        # Set minimum size and initial size for better scaling
+        self.setMinimumSize(1200, 675)
+        self.resize(1728, 972)
 
         # Central widget
         central_widget = QWidget()
@@ -93,7 +91,7 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(16)  # Reduced spacing from 20 to 16
         central_widget.setLayout(main_layout)
 
-        # Header with theme toggle
+        # Header
         self._create_header(main_layout)
         
         # Network quality indicator
@@ -115,10 +113,7 @@ class MainWindow(QMainWindow):
         main_layout.addStretch()
 
     def _create_header(self, layout: QVBoxLayout):
-        """Create the header section with theme toggle."""
-        header_container = QHBoxLayout()
-        
-        # Left side - title and subtitle
+        """Create the header section."""
         header_layout = QVBoxLayout()
         header_layout.setSpacing(4)
 
@@ -141,15 +136,8 @@ class MainWindow(QMainWindow):
 
         header_layout.addWidget(title_label)
         header_layout.addWidget(subtitle_label)
-        
-        # Right side - theme toggle
-        theme_toggle = ThemeToggleButton()
-        
-        header_container.addLayout(header_layout)
-        header_container.addStretch()
-        header_container.addWidget(theme_toggle, 0, Qt.AlignmentFlag.AlignTop)
-        
-        layout.addLayout(header_container)
+
+        layout.addLayout(header_layout)
     
     def _create_network_section(self, layout: QVBoxLayout):
         """Create network quality section."""

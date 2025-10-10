@@ -47,15 +47,13 @@ class ReceiverWindow(QMainWindow):
         self.client_connections: Dict[str, str] = {}
         self._setup_ui()
         self._setup_style()
-        
-        # Connect to theme changes
-        theme_manager.theme_changed.connect(self._setup_style)
 
     def _setup_ui(self):
         """Setup the receiver window UI."""
         self.setWindowTitle("Input Link - Receiver")
-        self.setMinimumSize(550, 750)
-        self.resize(620, 800)
+        # Set minimum size and initial size for better scaling
+        self.setMinimumSize(1200, 675)
+        self.resize(1728, 972)
 
         # Central widget
         central_widget = QWidget()
@@ -138,7 +136,7 @@ class ReceiverWindow(QMainWindow):
         
         # Create enhanced scroll area
         self.controllers_scroll = EnhancedScrollArea()
-        self.controllers_scroll.set_max_height(380)  # Increased from 300 to 380
+        self.controllers_scroll.set_max_height(450)  # Increased from 380 to 450 for better usability
         
         # Create widget to contain the controller cards
         controllers_widget = QWidget()

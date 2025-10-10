@@ -1141,7 +1141,7 @@ class EnhancedVirtualControllerCard(QFrame):
             }}
             QFrame:hover {{
                 border-color: {theme_manager.get_color('gaming_purple')};
-                box-shadow: 0px 2px 8px rgba(175, 82, 222, 0.1);
+                background-color: {theme_manager.get_color('window_bg')};
             }}
         """)
         self.setFixedHeight(58)  # More compact height

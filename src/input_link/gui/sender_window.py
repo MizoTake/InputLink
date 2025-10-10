@@ -47,10 +47,7 @@ class SenderWindow(QMainWindow):
         self.controller_cards: List[EnhancedControllerCard] = []
         self._setup_ui()
         self._setup_style()
-        
-        # Connect to theme changes
-        theme_manager.theme_changed.connect(self._setup_style)
-        
+
         # Setup auto-scan timer
         self._auto_scan_timer = QTimer()
         self._auto_scan_timer.setSingleShot(True)
@@ -71,8 +68,9 @@ class SenderWindow(QMainWindow):
     def _setup_ui(self):
         """Setup the sender window UI."""
         self.setWindowTitle("Input Link - Sender")
-        self.setMinimumSize(550, 750)
-        self.resize(620, 800)
+        # Set minimum size and initial size for better scaling
+        self.setMinimumSize(1200, 675)
+        self.resize(1728, 972)
 
         # Central widget
         central_widget = QWidget()
@@ -155,7 +153,7 @@ class SenderWindow(QMainWindow):
 
         # Controller list area with modern scroll
         self.controller_scroll_area = ModernCardScrollArea()
-        self.controller_scroll_area.set_max_height(240)  # Optimized for 56px card height
+        self.controller_scroll_area.set_max_height(350)  # Increased from 240 to 350 for better usability
         
         # Set empty message for when no controllers are detected
         self.controller_scroll_area.set_empty_message(

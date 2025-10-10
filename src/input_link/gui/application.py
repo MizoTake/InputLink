@@ -6,7 +6,7 @@ import asyncio
 import sys
 from typing import Dict, Optional
 
-from PySide6.QtCore import QThread, Signal, Slot, QTimer
+from PySide6.QtCore import QThread, Signal, Slot, QTimer, Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QStackedWidget
 
@@ -458,6 +458,10 @@ class InputLinkApplication(QApplication):
     def __init__(self, argv):
         super().__init__(argv)
 
+        # Enable High DPI scaling
+        self.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
+        self.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
+
         # Application setup
         self.setApplicationName("Input Link")
         self.setApplicationVersion("1.0.0")
@@ -517,12 +521,13 @@ class InputLinkApplication(QApplication):
             # Show stacked widget with main window
             print("Showing main window...")
             self.stacked_widget.setWindowTitle("Input Link")
-            self.stacked_widget.resize(600, 750)  # Set default size
+            # Set initial size (1728x972 - optimized for 1920x1080 displays)
+            self.stacked_widget.resize(1728, 972)
             self.stacked_widget.setCurrentWidget(self.main_window)
             self.stacked_widget.show()
             self.stacked_widget.raise_()
             self.stacked_widget.activateWindow()
-            
+
             # Force window to center and bring to front
             screen = QApplication.primaryScreen().geometry()
             window_size = self.stacked_widget.size()
@@ -741,6 +746,12 @@ class InputLinkApplication(QApplication):
 
 def run_gui_application():
     """Run the GUI application."""
+    # Enable High DPI scaling BEFORE QApplication is created
+    from PySide6.QtCore import Qt
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
+
     # Initialize early logging
     logger = setup_application_logging(
         app_name="gui_main",
