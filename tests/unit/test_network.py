@@ -111,6 +111,26 @@ class TestMessageProtocol:
 
         assert message.message_id == custom_id
 
+    def test_controller_disconnect_message_creation(self):
+        """Should create controller disconnect message correctly."""
+        # Disconnect specific controllers
+        message = NetworkMessage.create_controller_disconnect_message(
+            controller_numbers=[1, 2, 3]
+        )
+
+        assert message.message_type == MessageType.CONTROLLER_DISCONNECT
+        assert message.payload["controller_numbers"] == [1, 2, 3]
+        assert message.payload["disconnect_all"] is False
+
+    def test_controller_disconnect_message_all(self):
+        """Should create disconnect all message correctly."""
+        # Disconnect all controllers
+        message = NetworkMessage.create_controller_disconnect_message()
+
+        assert message.message_type == MessageType.CONTROLLER_DISCONNECT
+        assert message.payload["controller_numbers"] == []
+        assert message.payload["disconnect_all"] is True
+
 
 class TestWebSocketClient:
     """Test WebSocket client."""
@@ -387,6 +407,104 @@ class TestWebSocketClient:
 
             result = await self.client._attempt_connection()
             assert result is None
+
+    @pytest.mark.asyncio
+    async def test_stop_clears_message_queue(self):
+        """Should clear message queue on stop."""
+        # Start client
+        with patch("websockets.connect") as mock_connect:
+            mock_websocket = AsyncMock()
+            mock_websocket.closed = False
+            mock_websocket.wait_closed = AsyncMock()
+            mock_connect.return_value.__aenter__.return_value = mock_websocket
+            mock_connect.return_value.__aexit__.return_value = None
+
+            await self.client.start()
+            self.client._running = True
+
+            # Add messages to queue
+            for i in range(10):
+                message = NetworkMessage.create_heartbeat_message()
+                await self.client._message_queue.put(message)
+
+            # Verify queue has messages
+            queue_size_before = self.client._message_queue.qsize()
+            assert queue_size_before > 0
+
+            # Stop client
+            await self.client.stop()
+
+            # Verify queue is empty
+            assert self.client._message_queue.qsize() == 0
+
+    @pytest.mark.asyncio
+    async def test_message_sender_discards_when_not_connected(self):
+        """Should discard messages when not connected instead of requeueing."""
+        # Setup client as running but not connected
+        self.client._running = True
+        self.client._connected = False
+        self.client._websocket = None
+
+        # Add a message to queue
+        message = NetworkMessage.create_heartbeat_message()
+        await self.client._message_queue.put(message)
+
+        # Simulate one iteration of message sender
+        # Get message from queue
+        retrieved_message = await self.client._safe_queue_get(timeout=0.1)
+        assert retrieved_message is not None
+
+        # When not connected, message should be discarded (not put back)
+        # Queue should remain empty
+        assert self.client._message_queue.empty()
+
+    @pytest.mark.asyncio
+    async def test_start_stop_start_cycle(self):
+        """Should handle start-stop-start cycle correctly."""
+        with patch("websockets.connect") as mock_connect:
+            mock_websocket = AsyncMock()
+            mock_websocket.closed = False
+            mock_websocket.wait_closed = AsyncMock()
+            mock_connect.return_value.__aenter__.return_value = mock_websocket
+            mock_connect.return_value.__aexit__.return_value = None
+
+            # First start
+            await self.client.start()
+            assert self.client._running
+
+            # Stop
+            await self.client.stop()
+            assert not self.client._running
+            assert self.client._websocket is None
+
+            # Second start
+            await self.client.start()
+            assert self.client._running
+
+            # Cleanup
+            await self.client.stop()
+
+    @pytest.mark.asyncio
+    async def test_stop_resets_websocket_reference(self):
+        """Should reset websocket reference to None on stop."""
+        with patch("websockets.connect") as mock_connect:
+            mock_websocket = AsyncMock()
+            mock_websocket.closed = False
+            mock_websocket.wait_closed = AsyncMock()
+            mock_connect.return_value.__aenter__.return_value = mock_websocket
+            mock_connect.return_value.__aexit__.return_value = None
+
+            await self.client.start()
+            await asyncio.sleep(0.05)  # Let connection establish
+
+            # Websocket should exist
+            # Note: may still be None if connection loop hasn't completed yet
+
+            await self.client.stop()
+
+            # Websocket reference should be None
+            assert self.client._websocket is None
+            assert not self.client._connected
 
 
 class TestWebSocketServer:

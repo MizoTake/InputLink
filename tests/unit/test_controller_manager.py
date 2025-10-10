@@ -232,17 +232,21 @@ class TestControllerManager:
         next_num = self.manager._get_next_available_number()
         assert next_num == 11
 
+    @patch("pygame.joystick.get_init", return_value=True)
     @patch("pygame.joystick.quit")
     @patch("pygame.quit")
-    def test_cleanup(self, mock_pygame_quit, mock_joystick_quit):
+    def test_cleanup(self, mock_pygame_quit, mock_joystick_quit, mock_get_init):
         """Should cleanup resources properly."""
         self.manager._initialized = True
 
         self.manager.cleanup()
 
+        mock_get_init.assert_called_once()
         mock_joystick_quit.assert_called_once()
         mock_pygame_quit.assert_called_once()
         assert not self.manager._initialized
+        assert len(self.manager._controllers) == 0
+        assert len(self.manager._assigned_numbers) == 0
 
     @patch("pygame.event.pump")
     @patch("pygame.joystick.get_count")
@@ -326,3 +330,78 @@ class TestControllerManager:
         # Should have controller marked as connected again
         connected_third = self.manager.get_connected_controllers()
         assert len(connected_third) == 1
+
+    @patch("pygame.joystick.get_init", return_value=False)
+    @patch("pygame.joystick.quit")
+    @patch("pygame.quit")
+    def test_cleanup_when_joystick_not_initialized(self, mock_pygame_quit, mock_joystick_quit, mock_get_init):
+        """Should handle cleanup when joystick subsystem is not initialized."""
+        self.manager._initialized = True
+
+        self.manager.cleanup()
+
+        mock_get_init.assert_called_once()
+        # joystick.quit() should NOT be called if not initialized
+        mock_joystick_quit.assert_not_called()
+        mock_pygame_quit.assert_called_once()
+        assert not self.manager._initialized
+
+    @patch("pygame.joystick.get_init", return_value=True)
+    @patch("pygame.joystick.quit")
+    @patch("pygame.quit")
+    def test_cleanup_idempotency(self, mock_pygame_quit, mock_joystick_quit, mock_get_init):
+        """Should handle multiple cleanup calls gracefully (idempotent)."""
+        self.manager._initialized = True
+
+        # First cleanup
+        self.manager.cleanup()
+        assert not self.manager._initialized
+
+        # Reset mocks
+        mock_get_init.reset_mock()
+        mock_joystick_quit.reset_mock()
+        mock_pygame_quit.reset_mock()
+
+        # Second cleanup - should return early without doing anything
+        self.manager.cleanup()
+
+        # Should not call any pygame functions
+        mock_get_init.assert_not_called()
+        mock_joystick_quit.assert_not_called()
+        mock_pygame_quit.assert_not_called()
+
+    @patch("pygame.joystick.get_init", return_value=True)
+    @patch("pygame.joystick.quit")
+    @patch("pygame.quit")
+    def test_cleanup_with_populated_state(self, mock_pygame_quit, mock_joystick_quit, mock_get_init):
+        """Should clear all state data during cleanup."""
+        self.manager._initialized = True
+
+        # Populate state
+        controller1 = DetectedController(
+            pygame_id=0, device_id=1, name="Controller 1", guid="guid1",
+            num_axes=6, num_buttons=14, num_hats=1, assigned_number=1,
+        )
+        controller2 = DetectedController(
+            pygame_id=1, device_id=2, name="Controller 2", guid="guid2",
+            num_axes=6, num_buttons=14, num_hats=1, assigned_number=2,
+        )
+        self.manager._controllers[0] = controller1
+        self.manager._controllers[1] = controller2
+        self.manager._device_id_to_pygame_id[1] = 0
+        self.manager._device_id_to_pygame_id[2] = 1
+        self.manager._assigned_numbers = {1, 2}
+
+        # Verify state is populated
+        assert len(self.manager._controllers) == 2
+        assert len(self.manager._device_id_to_pygame_id) == 2
+        assert len(self.manager._assigned_numbers) == 2
+
+        # Cleanup
+        self.manager.cleanup()
+
+        # Verify all state is cleared
+        assert len(self.manager._controllers) == 0
+        assert len(self.manager._device_id_to_pygame_id) == 0
+        assert len(self.manager._assigned_numbers) == 0
+        assert not self.manager._initialized

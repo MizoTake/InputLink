@@ -123,6 +123,7 @@ class ReceiverApp:
             host=self.config.receiver_config.listen_host,
             port=self.config.receiver_config.listen_port,
             input_callback=self._on_controller_input,
+            disconnect_callback=self._on_controller_disconnect,
             status_callback=self._status_callback,
         )
 
@@ -164,7 +165,7 @@ class ReceiverApp:
 
     def _on_controller_input(self, input_data: ControllerInputData) -> None:
         """Handle received controller input data.
-        
+
         Args:
             input_data: Controller input data from sender
         """
@@ -173,9 +174,25 @@ class ReceiverApp:
             self.virtual_controller_manager.update_controller_state(input_data),
         )
 
+    def _on_controller_disconnect(self, controller_numbers: list[int]) -> None:
+        """Handle controller disconnect request.
+
+        Args:
+            controller_numbers: List of controller numbers to disconnect (empty = all)
+        """
+        # Forward to virtual controller manager
+        asyncio.create_task(
+            self.virtual_controller_manager.remove_controllers(controller_numbers),
+        )
+
+        if not controller_numbers:
+            self.logger.info("Disconnecting all virtual controllers")
+        else:
+            self.logger.info(f"Disconnecting virtual controllers: {controller_numbers}")
+
     def _on_controller_created(self, controller_number: int) -> None:
         """Handle virtual controller creation.
-        
+
         Args:
             controller_number: Controller number that was created
         """
@@ -183,7 +200,7 @@ class ReceiverApp:
 
     def _on_controller_destroyed(self, controller_number: int) -> None:
         """Handle virtual controller destruction.
-        
+
         Args:
             controller_number: Controller number that was destroyed
         """

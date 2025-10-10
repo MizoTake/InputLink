@@ -287,14 +287,23 @@ class ControllerManager:
 
     def cleanup(self) -> None:
         """Cleanup resources."""
-        if self._initialized:
-            try:
-                pygame.joystick.quit()
-                pygame.quit()
-                self._initialized = False
-                logger.info("Controller manager cleaned up")
-            except pygame.error as e:
-                logger.error(f"Error during cleanup: {e}")
+        if not self._initialized:
+            return
+
+        # Quit joystick subsystem first
+        if pygame.joystick.get_init():
+            pygame.joystick.quit()
+
+        # Quit pygame
+        pygame.quit()
+
+        # Reset all state
+        self._initialized = False
+        self._controllers.clear()
+        self._device_id_to_pygame_id.clear()
+        self._assigned_numbers.clear()
+
+        logger.info("Controller manager cleaned up")
 
     def __del__(self):
         """Ensure cleanup on destruction."""

@@ -61,9 +61,10 @@ class InputCaptureEngine:
 
     def start_capture(self) -> None:
         """Start input capture in background thread."""
-        if self._running:
-            logger.warning("Input capture is already running")
-            return
+        # Force cleanup if previous capture is still running
+        if self._running or (self._capture_thread and self._capture_thread.is_alive()):
+            logger.warning("Input capture is already running - forcing cleanup")
+            self.stop_capture()
 
         self._running = True
         self._capture_thread = threading.Thread(
@@ -81,14 +82,32 @@ class InputCaptureEngine:
 
         self._running = False
 
+        # Wait for capture thread to terminate
         if self._capture_thread and self._capture_thread.is_alive():
-            self._capture_thread.join(timeout=1.0)
+            self._capture_thread.join(timeout=2.0)
+
+            # Check if thread is still alive after timeout
+            if self._capture_thread.is_alive():
+                logger.warning("Input capture thread did not terminate within timeout")
+                # Thread will be marked as daemon and will be forcefully terminated
+            else:
+                logger.debug("Input capture thread terminated cleanly")
 
         # Cleanup pygame joysticks
         for joystick in self._pygame_joysticks.values():
             if joystick.get_init():
                 joystick.quit()
         self._pygame_joysticks.clear()
+
+        # Clear all state
+        self._previous_states.clear()
+
+        # Clear input queue
+        while not self._input_queue.empty():
+            self._input_queue.get_nowait()
+
+        # Reset thread reference
+        self._capture_thread = None
 
         logger.info("Input capture stopped")
 

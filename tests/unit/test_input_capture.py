@@ -73,16 +73,17 @@ class TestInputCaptureEngine:
         assert not self.engine._running
         # Give thread time to stop
         time.sleep(0.1)
-        assert not self.engine._capture_thread.is_alive()
+        # Thread reference should be reset to None after cleanup
+        assert self.engine._capture_thread is None
 
     def test_double_start_prevention(self):
-        """Should prevent double start."""
+        """Should prevent double start by forcing cleanup."""
         self.engine.start_capture()
 
-        # Try to start again
+        # Try to start again - should force cleanup and restart
         with patch("logging.Logger.warning") as mock_warning:
             self.engine.start_capture()
-            mock_warning.assert_called_with("Input capture is already running")
+            mock_warning.assert_called_with("Input capture is already running - forcing cleanup")
 
         self.engine.stop_capture()
 
@@ -489,3 +490,122 @@ class TestInputCaptureEngine:
         assert callback_data[0].controller_number == 1
         assert callback_data[0].buttons.a is True
         assert callback_data[0].axes.left_stick_x == 0.5
+
+    def test_stop_capture_clears_queue_and_state(self):
+        """Should clear input queue and previous states on stop."""
+        # Add some data to queue
+        for i in range(5):
+            test_data = ControllerInputData(
+                controller_number=1,
+                controller_id=f"test_{i}",
+            )
+            self.engine._input_queue.put_nowait(test_data)
+
+        # Add previous state
+        self.engine._previous_states["test_controller"] = ControllerInputData(
+            controller_number=1,
+            controller_id="test_controller",
+        )
+
+        # Verify data exists
+        assert not self.engine._input_queue.empty()
+        assert len(self.engine._previous_states) > 0
+
+        # Start and stop
+        self.engine.start_capture()
+        self.engine.stop_capture()
+
+        # Verify queue and states are cleared
+        assert self.engine._input_queue.empty()
+        assert len(self.engine._previous_states) == 0
+
+    def test_start_stop_start_cycle(self):
+        """Should handle start-stop-start cycle correctly."""
+        # First start
+        self.engine.start_capture()
+        assert self.engine._running
+        first_thread = self.engine._capture_thread
+        assert first_thread is not None
+
+        # Stop
+        self.engine.stop_capture()
+        assert not self.engine._running
+        assert self.engine._capture_thread is None
+
+        # Second start
+        self.engine.start_capture()
+        assert self.engine._running
+        second_thread = self.engine._capture_thread
+        assert second_thread is not None
+
+        # Should be a new thread
+        assert first_thread != second_thread
+
+        # Cleanup
+        self.engine.stop_capture()
+
+    def test_stop_capture_with_thread_timeout_warning(self):
+        """Should log warning if thread doesn't terminate within timeout."""
+        import threading
+        from unittest.mock import patch
+
+        # Create a mock thread that appears to never terminate
+        mock_thread = Mock(spec=threading.Thread)
+        mock_thread.is_alive.return_value = True
+
+        self.engine._running = True
+        self.engine._capture_thread = mock_thread
+
+        # Stop capture
+        with patch("logging.Logger.warning") as mock_warning:
+            self.engine.stop_capture()
+            # Should log warning about thread not terminating
+            mock_warning.assert_called_with("Input capture thread did not terminate within timeout")
+
+    def test_pygame_joystick_cleanup_on_stop(self):
+        """Should cleanup all pygame joysticks on stop."""
+        # Add mock joysticks
+        mock_joystick1 = Mock()
+        mock_joystick1.get_init.return_value = True
+        mock_joystick2 = Mock()
+        mock_joystick2.get_init.return_value = True
+
+        self.engine._pygame_joysticks[0] = mock_joystick1
+        self.engine._pygame_joysticks[1] = mock_joystick2
+
+        # Start and stop
+        self.engine.start_capture()
+        self.engine.stop_capture()
+
+        # Verify joysticks were quit
+        mock_joystick1.quit.assert_called_once()
+        mock_joystick2.quit.assert_called_once()
+
+        # Verify joystick dict is empty
+        assert len(self.engine._pygame_joysticks) == 0
+
+    def test_forced_cleanup_on_double_start(self):
+        """Should force cleanup when starting while already running."""
+        # First start
+        self.engine.start_capture()
+        first_thread = self.engine._capture_thread
+
+        # Add some state
+        self.engine._previous_states["test"] = ControllerInputData(
+            controller_number=1,
+            controller_id="test",
+        )
+
+        # Second start should force cleanup
+        self.engine.start_capture()
+        second_thread = self.engine._capture_thread
+
+        # Should be different threads
+        assert first_thread != second_thread
+
+        # State should be cleared from forced cleanup
+        # (stop_capture clears _previous_states)
+        assert len(self.engine._previous_states) == 0
+
+        # Cleanup
+        self.engine.stop_capture()

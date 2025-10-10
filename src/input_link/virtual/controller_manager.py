@@ -253,6 +253,20 @@ class VirtualControllerManager:
         for controller_number in self._controllers:
             await self.reset_controller(controller_number)
 
+    async def remove_controllers(self, controller_numbers: List[int]) -> None:
+        """Remove multiple virtual controllers.
+
+        Args:
+            controller_numbers: List of controller numbers to remove (empty list = remove all)
+        """
+        if not controller_numbers:
+            # Empty list means remove all
+            controller_numbers = list(self._controllers.keys())
+            logger.info("Removing all virtual controllers")
+
+        for controller_number in controller_numbers:
+            await self.remove_controller(controller_number)
+
     def get_controller_info(self) -> List[Dict[str, any]]:
         """Get information about all virtual controllers.
         

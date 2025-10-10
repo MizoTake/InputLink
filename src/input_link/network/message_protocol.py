@@ -134,16 +134,40 @@ class NetworkMessage(BaseModel):
     @classmethod
     def create_heartbeat_message(cls, message_id: Optional[str] = None) -> "NetworkMessage":
         """Create heartbeat message.
-        
+
         Args:
             message_id: Optional custom message ID
-            
+
         Returns:
             Network message
         """
         return cls(
             message_id=message_id or str(uuid.uuid4()),
             message_type=MessageType.HEARTBEAT,
+        )
+
+    @classmethod
+    def create_controller_disconnect_message(
+        cls,
+        controller_numbers: Optional[list[int]] = None,
+        message_id: Optional[str] = None,
+    ) -> "NetworkMessage":
+        """Create controller disconnect message.
+
+        Args:
+            controller_numbers: List of controller numbers to disconnect (None = all)
+            message_id: Optional custom message ID
+
+        Returns:
+            Network message
+        """
+        return cls(
+            message_id=message_id or str(uuid.uuid4()),
+            message_type=MessageType.CONTROLLER_DISCONNECT,
+            payload={
+                "controller_numbers": controller_numbers if controller_numbers is not None else [],
+                "disconnect_all": controller_numbers is None,
+            },
         )
 
     def to_json(self) -> str:

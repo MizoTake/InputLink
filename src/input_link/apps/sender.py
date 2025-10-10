@@ -301,17 +301,35 @@ class SenderApp:
 
         self.running = False
 
-        # Stop input capture
+        # Cleanup order is important:
+        # 1. Stop input capture (prevents new data generation)
+        # 2. Send disconnect message to receiver (triggers gamepad cleanup)
+        # 3. Stop WebSocket client (flushes pending messages and disconnects)
+        # 4. Cleanup controller manager (releases pygame resources)
+
+        # 1. Stop input capture first
         if self.input_engine:
             self.input_engine.stop_capture()
+            self.input_engine = None
 
-        # Stop WebSocket client
+        # 2. Send disconnect message to receiver before closing connection
+        if self.websocket_client and self.websocket_client.connected:
+            from input_link.network import NetworkMessage
+            disconnect_msg = NetworkMessage.create_controller_disconnect_message()
+            await self.websocket_client.send_message(disconnect_msg)
+            # Give a brief moment for the message to be sent
+            await asyncio.sleep(0.1)
+            self.logger.info("Sent disconnect message to receiver")
+
+        # 3. Stop WebSocket client
         if self.websocket_client:
             await self.websocket_client.stop()
+            self.websocket_client = None
 
-        # Cleanup controller manager
+        # 4. Cleanup controller manager last
         if self.controller_manager:
             self.controller_manager.cleanup()
+            self.controller_manager = None
 
         self.logger.info("Sender cleanup complete")
 

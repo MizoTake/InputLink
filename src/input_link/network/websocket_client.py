@@ -125,7 +125,15 @@ class WebSocketClient:
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
 
+        # Clear message queue to prevent stale messages on restart
+        queue_size = self._message_queue.qsize()
+        if queue_size > 0:
+            logger.debug(f"Clearing {queue_size} messages from queue")
+            while not self._message_queue.empty():
+                self._message_queue.get_nowait()
+
         self._connected = False
+        self._websocket = None
         if self._status_callback:
             self._status_callback("disconnected")
         logger.info("WebSocket client stopped")
@@ -293,7 +301,9 @@ class WebSocketClient:
                 await self._websocket.send(message.to_json())
                 logger.debug(f"Sent message: {message.message_type}")
             else:
-                await self._message_queue.put(message)
+                # Discard message if not connected - don't put back in queue
+                # This prevents queue buildup during disconnection
+                logger.debug(f"Discarding message (not connected): {message.message_type}")
                 await asyncio.sleep(0.1)
 
     async def __aenter__(self):

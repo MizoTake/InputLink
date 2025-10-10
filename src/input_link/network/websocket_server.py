@@ -25,16 +25,18 @@ class WebSocketServer:
         port: int = 8765,
         ping_timeout: float = 20.0,
         input_callback: Optional[Callable[[ControllerInputData], None]] = None,
+        disconnect_callback: Optional[Callable[[list[int]], None]] = None,
         message_callback: Optional[Callable[[NetworkMessage, str], None]] = None,
         status_callback: Optional[Callable[[str, Dict], None]] = None,
     ):
         """Initialize WebSocket server.
-        
+
         Args:
             host: Server bind address
             port: Server port
             ping_timeout: WebSocket ping timeout
             input_callback: Optional callback for controller input
+            disconnect_callback: Optional callback for controller disconnect (controller_numbers)
             message_callback: Optional callback for all messages
             status_callback: Optional callback for status changes (status, data)
         """
@@ -42,6 +44,7 @@ class WebSocketServer:
         self._port = port
         self._ping_timeout = ping_timeout
         self._input_callback = input_callback
+        self._disconnect_callback = disconnect_callback
         self._message_callback = message_callback
         self._status_callback = status_callback
 
@@ -269,6 +272,9 @@ class WebSocketServer:
         if message.message_type == MessageType.CONTROLLER_INPUT:
             await self._handle_controller_input(message)
 
+        elif message.message_type == MessageType.CONTROLLER_DISCONNECT:
+            await self._handle_controller_disconnect(message)
+
         elif message.message_type == MessageType.STATUS_REQUEST:
             await self._handle_status_request(client_id, websocket, message)
 
@@ -277,13 +283,38 @@ class WebSocketServer:
 
     async def _handle_controller_input(self, message: NetworkMessage) -> None:
         """Handle controller input message.
-        
+
         Args:
             message: Controller input message
         """
         input_data = message.get_controller_input_data()
         if input_data and self._input_callback:
             self._input_callback(input_data)
+
+    async def _handle_controller_disconnect(self, message: NetworkMessage) -> None:
+        """Handle controller disconnect message.
+
+        Args:
+            message: Controller disconnect message
+        """
+        if not self._disconnect_callback:
+            return
+
+        disconnect_all = message.payload.get("disconnect_all", False)
+        controller_numbers = message.payload.get("controller_numbers", [])
+
+        if disconnect_all:
+            # Disconnect all controllers (empty list signals "all")
+            self._disconnect_callback([])
+            logger.info("Received disconnect request for all controllers")
+        elif controller_numbers:
+            # Disconnect specific controllers
+            self._disconnect_callback(controller_numbers)
+            logger.info(f"Received disconnect request for controllers: {controller_numbers}")
+        else:
+            # disconnect_all=False and empty list - disconnect all as well
+            self._disconnect_callback([])
+            logger.info("Received disconnect request (empty list, disconnecting all)")
 
     async def _handle_status_request(
         self,
