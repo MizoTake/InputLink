@@ -54,6 +54,11 @@ class AsyncWorker(QThread):
             verbose=False,
             log_callback=None,
         )
+
+        # Config file path
+        from pathlib import Path
+        self.config_path = Path.home() / ".input-link" / "config.json"
+
         # Runtime settings captured from UI
         self.sender_settings: Dict = {
             "host": "127.0.0.1",
@@ -67,6 +72,9 @@ class AsyncWorker(QThread):
             "max_controllers": 4,
             "auto_create": True,
         }
+
+        # Load last used IP from config file
+        self._load_last_used_ip()
 
         # Preview polling (independent of capture)
         self._preview_timer = None
@@ -114,6 +122,40 @@ class AsyncWorker(QThread):
         if self.isRunning():
             print("Force terminating worker thread")
             self.terminate()
+
+    def _load_last_used_ip(self):
+        """Load last used IP address from config file."""
+        # Create config directory
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Load config from file
+        if self.config_path.exists():
+            from input_link.models import ConfigModel
+            config = ConfigModel.load_from_file(self.config_path)
+            last_ip = getattr(config.sender_config, "last_used_ip", None)
+            if last_ip and isinstance(last_ip, str):
+                self.sender_settings["host"] = last_ip
+                self.logger.info(f"Loaded last used IP: {last_ip}")
+
+    def get_last_used_ip(self) -> str:
+        """Get the last used IP address from sender settings."""
+        return self.sender_settings.get("host", "127.0.0.1")
+
+    def _save_last_used_ip(self, ip_address: str):
+        """Save IP address to config file."""
+        # Create config directory
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        from input_link.models import ConfigModel
+        # Load existing config or create default
+        config = ConfigModel.load_from_file(self.config_path)
+
+        # Update last_used_ip
+        config.sender_config.last_used_ip = ip_address
+
+        # Save back to file
+        config.save_to_file(self.config_path)
+        self.logger.info(f"Saved last used IP: {ip_address}")
 
     def _sender_log_callback(self, level: str, message: str):
         self.log_message.emit(f"[Sender] {message}")
@@ -207,9 +249,14 @@ class AsyncWorker(QThread):
                 assigned_number=entry.get("number", 1),
                 enabled=True,
             )
+
+        # Save IP address to config file when starting
+        current_host = self.sender_settings.get("host", "127.0.0.1")
+        self._save_last_used_ip(current_host)
+
         cfg = ConfigModel(
             sender_config=SenderConfig(
-                receiver_host=self.sender_settings.get("host", "127.0.0.1"),
+                receiver_host=current_host,
                 receiver_port=int(self.sender_settings.get("port", 8765)),
                 polling_rate=int(self.sender_settings.get("polling_rate", 60)),
                 controllers=controllers_cfg,
@@ -589,6 +636,12 @@ class InputLinkApplication(QApplication):
         print(f"back_btn check: {hasattr(self.sender_window, 'back_btn') if self.sender_window else False}")
         print(f"scan_btn check: {hasattr(self.sender_window, 'scan_btn') if self.sender_window else False}")
         if self.sender_window and self.async_worker:
+            # Set last used IP address to sender window
+            last_ip = self.async_worker.get_last_used_ip()
+            if hasattr(self.sender_window, 'host_combo'):
+                self.sender_window.host_combo.setCurrentText(last_ip)
+                print(f"Set sender window host to: {last_ip}")
+
             # Connect available signals
             self._connect_signal(self.sender_window, 'start_capture', self.async_worker.start_sender, "Connected start_capture signal")
             self._connect_signal(self.sender_window, 'stop_capture', self._stop_sender, "Connected stop_capture signal")

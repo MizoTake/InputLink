@@ -53,6 +53,7 @@ class SenderConfig(BaseModel):
     retry_interval: float = Field(default=1.0, ge=0.1, le=30.0)
     max_retry_attempts: int = Field(default=10, ge=1, le=100)
     controllers: Dict[str, ControllerConfig] = Field(default_factory=dict)
+    last_used_ip: Optional[str] = Field(default=None, description="Last used IP address for convenience")
 
     @field_validator("receiver_host")
     @classmethod

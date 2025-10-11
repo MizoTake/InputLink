@@ -222,6 +222,23 @@ class ThemeManager(QObject):
                 border-top: 4px solid {ThemeColors.TEXT_SECONDARY};
                 margin-right: 8px;
             }}
+            QComboBox QAbstractItemView {{
+                background-color: {ThemeColors.INPUT_BG};
+                border: 1px solid {ThemeColors.BORDER_SECONDARY};
+                border-radius: 4px;
+                selection-background-color: {ThemeColors.PRIMARY};
+                selection-color: {ThemeColors.TEXT_INVERSE};
+                color: {ThemeColors.TEXT_PRIMARY};
+                padding: 4px;
+            }}
+            QComboBox QAbstractItemView::item {{
+                min-height: 28px;
+                padding: 4px 8px;
+            }}
+            QComboBox QAbstractItemView::item:hover {{
+                background-color: {ThemeColors.SECONDARY_HOVER};
+                color: {ThemeColors.TEXT_PRIMARY};
+            }}
         """
 
     def get_window_style(self) -> str:
