@@ -56,13 +56,14 @@ class TestPerformanceMetrics:
         self.metrics.add_execution(0.1, success=True)
         self.metrics.add_execution(0.3, success=True)
         self.metrics.add_execution(0.2, success=False)
-        
+
         assert self.metrics.call_count == 3
         assert self.metrics.error_count == 1
-        assert self.metrics.total_time == 0.6
-        assert self.metrics.average_time == 0.2
-        assert self.metrics.min_time == 0.1
-        assert self.metrics.max_time == 0.3
+        # Use approximate comparison for floating point to avoid precision issues
+        assert abs(self.metrics.total_time - 0.6) < 1e-9
+        assert abs(self.metrics.average_time - 0.2) < 1e-9
+        assert abs(self.metrics.min_time - 0.1) < 1e-9
+        assert abs(self.metrics.max_time - 0.3) < 1e-9
         assert abs(self.metrics.success_rate - 66.67) < 0.1  # 2/3 * 100
     
     def test_recent_average(self):
