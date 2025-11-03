@@ -26,6 +26,7 @@ class WebSocketServer:
         ping_timeout: float = 20.0,
         input_callback: Optional[Callable[[ControllerInputData], None]] = None,
         disconnect_callback: Optional[Callable[[list[int]], None]] = None,
+        client_disconnect_callback: Optional[Callable[[str], None]] = None,
         message_callback: Optional[Callable[[NetworkMessage, str], None]] = None,
         status_callback: Optional[Callable[[str, Dict], None]] = None,
     ):
@@ -45,6 +46,9 @@ class WebSocketServer:
         self._ping_timeout = ping_timeout
         self._input_callback = input_callback
         self._disconnect_callback = disconnect_callback
+        # Explicit disconnect requests (message) use disconnect_callback; passive client drops use client_disconnect_callback
+        # with client_id. If not provided, fall back to disconnecting all.
+        self._client_disconnect_callback = client_disconnect_callback
         self._message_callback = message_callback
         self._status_callback = status_callback
 
@@ -354,7 +358,7 @@ class WebSocketServer:
 
     async def _disconnect_client(self, client_id: str) -> None:
         """Disconnect and cleanup client.
-        
+
         Args:
             client_id: Client identifier
         """
@@ -372,6 +376,20 @@ class WebSocketServer:
         # Wait for tasks to complete
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+
+        # On passive client disconnects, allow app to handle sender-specific cleanup.
+        # If no client handler is provided, fall back to disconnecting all controllers.
+        try:
+            if self._client_disconnect_callback:
+                logger.info(f"Client {client_id} disconnected; invoking client disconnect handler")
+                result = self._client_disconnect_callback(client_id)
+                if asyncio.iscoroutine(result):
+                    await result
+            elif self._disconnect_callback:
+                logger.info(f"Client {client_id} disconnected; falling back to disconnect all controllers")
+                self._disconnect_callback([])
+        except Exception as e:
+            logger.error(f"Error handling client disconnect: {e}")
 
         # Remove from tracking
         self._clients.pop(client_id, None)

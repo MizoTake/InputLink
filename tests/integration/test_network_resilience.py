@@ -22,12 +22,16 @@ class TestNetworkResilience:
         
         connection_attempts = []
         
-        # Mock websockets.connect to track attempts
-        async def mock_connect(*args, **kwargs):
-            connection_attempts.append(args)
-            raise ConnectionRefusedError("Connection refused")
-        
-        with patch('websockets.connect', side_effect=mock_connect):
+        # Mock websockets.connect as async context manager and track attempts
+        class _MockConnectCM:
+            def __init__(self, *args, **kwargs):
+                connection_attempts.append(args)
+            async def __aenter__(self):
+                raise ConnectionRefusedError("Connection refused")
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+        with patch('websockets.connect', side_effect=_MockConnectCM):
             # Start client (should fail to connect)
             await client.start()
             

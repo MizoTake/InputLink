@@ -40,6 +40,8 @@ class ReceiverApp:
         self.running = False
         self._status_callback = status_callback
         self._main_task: Optional[asyncio.Task] = None
+        # Track which client (sender) uses which virtual controller numbers
+        self._client_controller_map: Dict[str, set[int]] = {}
         
         # Initialize logging
         self.logger = setup_application_logging(
@@ -124,6 +126,8 @@ class ReceiverApp:
             port=self.config.receiver_config.listen_port,
             input_callback=self._on_controller_input,
             disconnect_callback=self._on_controller_disconnect,
+            client_disconnect_callback=self._on_client_disconnect,
+            message_callback=self._on_message,
             status_callback=self._status_callback,
         )
 
@@ -180,15 +184,52 @@ class ReceiverApp:
         Args:
             controller_numbers: List of controller numbers to disconnect (empty = all)
         """
-        # Forward to virtual controller manager
+        # Explicit disconnect from sender: remove the requested virtual controllers
         asyncio.create_task(
             self.virtual_controller_manager.remove_controllers(controller_numbers),
         )
 
         if not controller_numbers:
-            self.logger.info("Disconnecting all virtual controllers")
+            self.logger.info("Disconnecting all virtual controllers (explicit request)")
         else:
-            self.logger.info(f"Disconnecting virtual controllers: {controller_numbers}")
+            self.logger.info(f"Disconnecting virtual controllers (explicit request): {controller_numbers}")
+
+    def _on_client_disconnect(self, client_id: str) -> None:
+        """Handle sender (client) disconnection.
+
+        Remove only the virtual controllers that were used by this sender.
+        """
+        controller_numbers = list(self._client_controller_map.pop(client_id, set()))
+        if controller_numbers:
+            asyncio.create_task(
+                self.virtual_controller_manager.remove_controllers(controller_numbers),
+            )
+            self.logger.info(f"Client {client_id} disconnected; removing controllers: {controller_numbers}")
+        else:
+            self.logger.info(f"Client {client_id} disconnected; no associated controllers to remove")
+
+    def _on_message(self, message, client_id: str) -> None:
+        """Track which controllers are used by which client.
+
+        Robust to message_type being either an Enum or a plain string.
+        """
+        try:
+            from input_link.network.message_protocol import MessageType
+            msg_type = getattr(message, "message_type", None)
+            # Accept Enum or str
+            is_input = (msg_type == MessageType.CONTROLLER_INPUT) or (str(msg_type) == "controller_input")
+            if not is_input:
+                return
+
+            input_data = message.get_controller_input_data()
+            if input_data is None:
+                return
+
+            nums = self._client_controller_map.setdefault(client_id, set())
+            nums.add(int(input_data.controller_number))
+        except Exception:
+            # Tracking should not break message processing
+            pass
 
     def _on_controller_created(self, controller_number: int) -> None:
         """Handle virtual controller creation.
@@ -205,6 +246,12 @@ class ReceiverApp:
             controller_number: Controller number that was destroyed
         """
         self.logger.info(f"Virtual controller {controller_number} destroyed")
+        # Remove this controller number from all client mappings
+        try:
+            for nums in self._client_controller_map.values():
+                nums.discard(controller_number)
+        except Exception:
+            pass
 
     async def _cleanup(self) -> None:
         """Cleanup application resources."""

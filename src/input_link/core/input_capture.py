@@ -39,18 +39,22 @@ class InputCaptureEngine:
         config: Optional[InputCaptureConfig] = None,
         input_callback: Optional[Callable[[ControllerInputData], Any]] = None,
         event_loop: Optional[asyncio.AbstractEventLoop] = None,
+        cleanup_joysticks: bool = True,
     ):
         """Initialize input capture engine.
-        
+
         Args:
             controller_manager: Controller manager instance
             config: Capture configuration
             input_callback: Optional callback for input events
+            event_loop: Event loop for async callbacks
+            cleanup_joysticks: Cleanup joysticks on stop (False for GUI preview mode)
         """
         self._controller_manager = controller_manager
         self._config = config or InputCaptureConfig()
         self._input_callback = input_callback
         self._event_loop = event_loop
+        self._cleanup_joysticks = cleanup_joysticks
 
         self._running = False
         self._capture_thread: Optional[threading.Thread] = None
@@ -93,11 +97,16 @@ class InputCaptureEngine:
             else:
                 logger.debug("Input capture thread terminated cleanly")
 
-        # Cleanup pygame joysticks
-        for joystick in self._pygame_joysticks.values():
-            if joystick.get_init():
-                joystick.quit()
-        self._pygame_joysticks.clear()
+        # Cleanup pygame joysticks (only if cleanup flag is True)
+        if self._cleanup_joysticks:
+            for joystick in self._pygame_joysticks.values():
+                if joystick.get_init():
+                    joystick.quit()
+            self._pygame_joysticks.clear()
+        else:
+            # In GUI mode, just clear the dictionary but don't quit joysticks
+            logger.debug("Skipping joystick cleanup (GUI preview mode)")
+            self._pygame_joysticks.clear()
 
         # Clear all state
         self._previous_states.clear()

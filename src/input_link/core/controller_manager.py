@@ -308,3 +308,38 @@ class ControllerManager:
     def __del__(self):
         """Ensure cleanup on destruction."""
         self.cleanup()
+
+    # Utility for GUI mode: keep numbers compact and stable across restarts
+    def compact_assignments(self) -> None:
+        """Reassign controller numbers densely from 1..N for connected controllers.
+
+        This prevents unbounded growth of assigned numbers across GUI start/stop
+        cycles by reclaiming numbers not currently used.
+
+        Only connected controllers are considered; disconnected ones retain no
+        assignment. Existing preferences are not persisted across compaction.
+        """
+        # Build deterministic order: preserve existing assigned order first,
+        # then by identifier to ensure stable ordering between scans.
+        connected = [c for c in self._controllers.values() if c.state == ControllerConnectionState.CONNECTED]
+        if not connected:
+            self._assigned_numbers.clear()
+            return
+
+        def sort_key(c: DetectedController):
+            # Assigned first (keep relative order), then identifier
+            return (0 if (c.assigned_number is not None) else 1, c.assigned_number or 0, c.identifier)
+
+        connected.sort(key=sort_key)
+
+        # Clear previous assignments for connected controllers
+        for c in connected:
+            c.assigned_number = None
+
+        # Reassign from 1..N
+        self._assigned_numbers.clear()
+        next_num = 1
+        for c in connected:
+            c.assigned_number = next_num
+            self._assigned_numbers.add(next_num)
+            next_num += 1

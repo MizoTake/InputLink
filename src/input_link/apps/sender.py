@@ -25,6 +25,7 @@ class SenderApp:
         status_callback: Optional[Callable[[str], None]] = None,
         input_preview_callback: Optional[Callable[[str, dict, dict], None]] = None,
         verbose: bool = False,
+        cleanup_controller_manager: bool = True,
     ):
         """Initialize sender application.
 
@@ -34,6 +35,7 @@ class SenderApp:
             status_callback: Callback for status changes
             input_preview_callback: Callback for input preview (controller_id, button_states, axis_values)
             verbose: Enable verbose (DEBUG) logging
+            cleanup_controller_manager: Cleanup controller manager on stop (False for GUI mode)
         """
         self.config_path = config_path or Path.home() / ".input-link" / "config.json"
         self.config: Optional[ConfigModel] = None
@@ -44,6 +46,7 @@ class SenderApp:
         self._status_callback = status_callback
         self._input_preview_callback = input_preview_callback
         self._main_task: Optional[asyncio.Task] = None
+        self._cleanup_controller_manager = cleanup_controller_manager
 
         # Initialize logging
         self.logger = setup_application_logging(
@@ -162,13 +165,15 @@ class SenderApp:
 
     async def _initialize_components(self) -> None:
         """Initialize application components."""
-        # Initialize controller manager
+        # Initialize or reuse controller manager
         # If explicit controller mappings are provided in config, prefer manual assignment
         has_explicit_mappings = bool(
             getattr(self.config, "sender_config", None)
             and getattr(self.config.sender_config, "controllers", None)
         )
-        self.controller_manager = ControllerManager(auto_assign_numbers=not has_explicit_mappings)
+        if self.controller_manager is None:
+            self.controller_manager = ControllerManager(auto_assign_numbers=not has_explicit_mappings)
+        # Ensure initialized
         self.controller_manager.initialize()
 
         # Initialize input capture engine
@@ -182,6 +187,7 @@ class SenderApp:
             config=capture_config,
             input_callback=self._on_controller_input,
             event_loop=loop,
+            cleanup_joysticks=self._cleanup_controller_manager,  # Match cleanup flag
         )
 
         # Initialize WebSocket client
@@ -217,12 +223,17 @@ class SenderApp:
                         self.controller_manager.set_input_method(cid, ccfg.input_method)
                         self.logger.info(f"  - Applied input_method {ccfg.input_method.value} to {cid}")
                 else:
-                    # Disabled: ensure no assignment remains
-                    for c in controllers:
-                        if c.identifier == cid:
-                            if c.assigned_number:
-                                c.assigned_number = None
-                            break
+                    # Disabled: ensure no assignment remains and free the number properly
+                    self.controller_manager.unassign_controller(cid)
+
+        # In GUI mode without explicit mappings, compact controller numbers to avoid growth
+        if not mappings and not self._cleanup_controller_manager:
+            try:
+                self.controller_manager.compact_assignments()
+                # Re-scan to reflect any assignment changes in log output
+                controllers = self.controller_manager.get_connected_controllers()
+            except Exception:
+                pass
 
         for controller in controllers:
             self.logger.info(f"  - {controller.name} (Number: {controller.assigned_number})")
@@ -312,24 +323,29 @@ class SenderApp:
             self.input_engine.stop_capture()
             self.input_engine = None
 
-        # 2. Send disconnect message to receiver before closing connection
-        if self.websocket_client and self.websocket_client.connected:
-            from input_link.network import NetworkMessage
-            disconnect_msg = NetworkMessage.create_controller_disconnect_message()
-            await self.websocket_client.send_message(disconnect_msg)
-            # Give a brief moment for the message to be sent
-            await asyncio.sleep(0.1)
-            self.logger.info("Sent disconnect message to receiver")
+        # 2. Do NOT send explicit disconnect; allow server to handle client drop
+        #    by resetting controllers to neutral state while keeping them connected.
+        #    This avoids games losing the device on sender stop.
 
         # 3. Stop WebSocket client
         if self.websocket_client:
             await self.websocket_client.stop()
             self.websocket_client = None
 
+        # Notify status callback BEFORE clearing controller manager reference
+        # This allows the callback to access controller state
+        if self._status_callback:
+            self._status_callback("stopped")
+
         # 4. Cleanup controller manager last
-        if self.controller_manager:
+        if self.controller_manager and self._cleanup_controller_manager:
+            # CUI mode: fully cleanup pygame resources
             self.controller_manager.cleanup()
             self.controller_manager = None
+        elif self.controller_manager:
+            # GUI mode: keep controller_manager alive for preview reuse
+            # Do not clear the reference here so GUI can restart preview polling
+            self.logger.info("Preserving controller manager for GUI preview reuse")
 
         self.logger.info("Sender cleanup complete")
 

@@ -28,6 +28,8 @@ class AsyncWorker(QThread):
     receiver_status_changed = Signal(str, str) # status, color
     log_message = Signal(str)
     input_preview_update = Signal(str, dict, dict)  # controller_id, button_states, axis_values
+    restart_preview_requested = Signal(list)  # Signal to restart preview in main thread
+    stop_preview_requested = Signal()  # Signal to stop preview in main thread
 
     # Map sender status to display text and colors (kept identical)
     STATUS_MAP = {
@@ -164,6 +166,25 @@ class AsyncWorker(QThread):
         display_status, color = self.STATUS_MAP.get(status, ("Unknown", "#8E8E93"))
         self.sender_status_changed.emit(display_status, color)
 
+        # Restart preview polling when sender stops
+        if status == "stopped":
+            self.logger.info("Sender stopped, requesting preview restart in main thread")
+            # Use the sender app's controller manager if available (already has fresh state)
+            if self.sender_app and self.sender_app.controller_manager:
+                controllers = self.sender_app.controller_manager.get_connected_controllers()
+                self.logger.info(f"Found {len(controllers)} controllers from sender for preview")
+                # Keep reference to controller manager for preview
+                self.controller_manager = self.sender_app.controller_manager
+                # Emit signal to restart preview in main thread (where QTimer works)
+                self.restart_preview_requested.emit(controllers)
+            elif self.controller_manager:
+                # Fallback to AsyncWorker's controller manager
+                controllers = self.controller_manager.get_connected_controllers()
+                self.logger.info(f"Found {len(controllers)} controllers from worker for preview")
+                self.restart_preview_requested.emit(controllers)
+            else:
+                self.logger.warning("Controller manager not available for preview restart")
+
     def _sender_input_preview_callback(self, controller_id: str, button_states: dict, axis_values: dict):
         """Forward input preview data to GUI."""
         self.input_preview_update.emit(controller_id, button_states, axis_values)
@@ -238,6 +259,35 @@ class AsyncWorker(QThread):
             self.logger.warning("Sender is already running.")
             self.log_message.emit("Sender is already running.")
             return
+
+        # Wait for previous sender to fully stop if it exists
+        if self.sender_app:
+            self.logger.info("Waiting for previous sender to stop...")
+            # Schedule the wait and start sequence asynchronously
+            self._schedule(self._wait_and_start_sender())
+            return
+
+        # If no previous sender, start immediately
+        self._do_start_sender()
+
+    async def _wait_and_start_sender(self):
+        """Wait for previous sender to stop, then start new one."""
+        # Wait for cleanup to complete (max 3 seconds)
+        for _ in range(30):
+            if self.sender_app and self.sender_app.running:
+                await asyncio.sleep(0.1)
+            else:
+                break
+        # Start new sender
+        self._do_start_sender()
+
+    def _do_start_sender(self):
+        """Actual sender startup logic."""
+        # Stop preview polling while sender is running to avoid joystick conflicts
+        # Request stop from main thread (where QTimer lives)
+        self.stop_preview_requested.emit()
+        self.logger.info("Requested preview polling stop (sender starting)")
+
         # Build config from current UI settings
         from input_link.models import ConfigModel, SenderConfig, ReceiverConfig, ControllerConfig
         controllers_cfg = {}
@@ -269,7 +319,11 @@ class AsyncWorker(QThread):
             status_callback=self._sender_status_callback,
             input_preview_callback=self._sender_input_preview_callback,
             verbose=False,
+            cleanup_controller_manager=False,  # Keep pygame running for preview
         )
+        # Reuse existing controller manager to ensure consistent pygame state
+        if self.controller_manager:
+            self.sender_app.controller_manager = self.controller_manager
         # Inject config prepared from UI
         self.sender_app.config = cfg
         self._schedule(self.sender_app.start())
@@ -404,37 +458,66 @@ class AsyncWorker(QThread):
         """Start polling controller inputs for preview (independent of capture)."""
         import pygame
 
+        print(f"\n=== _start_preview_polling called with {len(controllers)} controllers ===")
+
         # Stop existing timer
         if self._preview_timer:
+            print("Stopping existing preview timer")
             self._preview_timer.stop()
             self._preview_timer = None
 
+        # Cleanup old joysticks before clearing
+        for controller_id, (controller, joystick) in list(self._preview_joysticks.items()):
+            try:
+                if joystick.get_init():
+                    print(f"Quitting old joystick: {controller_id}")
+                    joystick.quit()
+            except Exception as e:
+                print(f"Error quitting old joystick {controller_id}: {e}")
+
         # Clear old joysticks
         self._preview_joysticks.clear()
+        print("Cleared old preview joysticks")
 
         if not controllers:
+            print("No controllers provided, exiting")
             return
 
         # Ensure pygame and joystick subsystem are initialized
         if not pygame.get_init():
+            print("Initializing pygame")
             pygame.init()
         if not pygame.joystick.get_init():
+            print("Initializing pygame joystick subsystem")
             pygame.joystick.init()
+
+        # Get joystick count
+        joystick_count = pygame.joystick.get_count()
+        print(f"pygame reports {joystick_count} joysticks available")
 
         # Initialize joysticks for preview
         for controller in controllers:
             try:
+                print(f"Initializing joystick for controller: {controller.name} (pygame_id={controller.pygame_id})")
                 joystick = pygame.joystick.Joystick(controller.pygame_id)
                 joystick.init()
+                print(f"Joystick initialized: {joystick.get_name()}, init={joystick.get_init()}")
                 self._preview_joysticks[controller.identifier] = (controller, joystick)
             except Exception as e:
                 print(f"Failed to init joystick for preview: {e}")
+                import traceback
+                traceback.print_exc()
 
         # Create timer for polling (60 Hz)
         if self._preview_joysticks:
+            print(f"Creating preview timer for {len(self._preview_joysticks)} joysticks")
             self._preview_timer = QTimer()
             self._preview_timer.timeout.connect(self._poll_preview_inputs)
             self._preview_timer.start(16)  # ~60 Hz
+            print("Preview timer started")
+        else:
+            print("No joysticks initialized, preview timer not started")
+        print("=== _start_preview_polling complete ===\n")
 
     def _poll_preview_inputs(self):
         """Poll controller inputs for preview display."""
@@ -444,6 +527,7 @@ class AsyncWorker(QThread):
         # Check if pygame is still initialized before polling
         if not pygame.get_init() or not pygame.joystick.get_init():
             # Stop the timer if pygame has been shut down
+            print("WARNING: pygame or joystick subsystem not initialized, stopping preview timer")
             if self._preview_timer:
                 self._preview_timer.stop()
                 self._preview_timer = None
@@ -456,6 +540,11 @@ class AsyncWorker(QThread):
             return
 
         for controller_id, (controller, joystick) in list(self._preview_joysticks.items()):
+            # Check if joystick is still initialized
+            if not joystick.get_init():
+                print(f"WARNING: Joystick {controller_id} is not initialized")
+                continue
+
             try:
                 # Read button states
                 button_states = {
@@ -605,6 +694,8 @@ class InputLinkApplication(QApplication):
         self.async_worker.receiver_status_changed.connect(self._on_receiver_status_changed)
         self.async_worker.log_message.connect(self._on_log_message)
         self.async_worker.input_preview_update.connect(self._on_input_preview_update)
+        self.async_worker.restart_preview_requested.connect(self._on_restart_preview_requested)
+        self.async_worker.stop_preview_requested.connect(self._on_stop_preview_requested)
 
         # Start worker
         self.async_worker.start()
@@ -776,6 +867,41 @@ class InputLinkApplication(QApplication):
         """Handle input preview updates."""
         if self.sender_window:
             self.sender_window.update_controller_input_preview(controller_id, button_states, axis_values)
+
+    @Slot(list)
+    def _on_restart_preview_requested(self, controllers):
+        """Handle preview restart request from worker thread.
+
+        This runs in the main GUI thread, where QTimer can function properly.
+        """
+        print(f"\n=== _on_restart_preview_requested (MAIN THREAD) with {len(controllers)} controllers ===")
+        # Call AsyncWorker's _start_preview_polling, but it will run in main thread context
+        # because this slot is executed in main thread
+        self.async_worker._start_preview_polling(controllers)
+        print("=== Preview restart complete ===\n")
+
+    @Slot()
+    def _on_stop_preview_requested(self):
+        """Handle preview stop request from worker thread.
+
+        This runs in the main GUI thread, where QTimer can be stopped properly.
+        """
+        if self.async_worker._preview_timer:
+            self.async_worker._preview_timer.stop()
+            self.async_worker._preview_timer = None
+            print("Preview polling stopped (from main thread)")
+        # Clean up preview joysticks to avoid conflicts with sender capture
+        try:
+            for controller_id, (controller, joystick) in list(self.async_worker._preview_joysticks.items()):
+                try:
+                    if joystick and hasattr(joystick, 'get_init') and joystick.get_init():
+                        joystick.quit()
+                        print(f"Preview joystick quit: {controller_id}")
+                except Exception as e:
+                    print(f"Error quitting preview joystick {controller_id}: {e}")
+            self.async_worker._preview_joysticks.clear()
+        except Exception as e:
+            print(f"Error during preview joystick cleanup: {e}")
 
     def _on_about_to_quit(self):
         """Ensure background threads and loops stop before app exit."""
