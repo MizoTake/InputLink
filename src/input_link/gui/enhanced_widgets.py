@@ -1051,14 +1051,14 @@ class EnhancedVirtualControllerCard(QFrame):
         header_layout = QHBoxLayout()
         header_layout.setSpacing(8)
         
-        # Virtual controller icon - smaller
-        self.controller_icon = QLabel("🖥️")
+        # Virtual controller icon - shows it's virtual (computer + gamepad)
+        self.controller_icon = QLabel("🎮💻")
         self.controller_icon.setStyleSheet(f"""
             QLabel {{
-                font-size: 16px;
+                font-size: 14px;
                 color: {theme_manager.get_color('gaming_purple')};
-                min-width: 18px;
-                max-width: 18px;
+                min-width: 24px;
+                max-width: 24px;
             }}
         """)
         
@@ -1066,20 +1066,20 @@ class EnhancedVirtualControllerCard(QFrame):
         info_layout = QVBoxLayout()
         info_layout.setSpacing(2)  # Tighter spacing
         
-        # Title - more compact
-        title_label = QLabel("Virtual Controller")
+        # Title - shows it's a virtual controller with sender index
+        title_label = QLabel(f"Virtual Xbox 360 (Sender #{self.controller_number})")
         title_font = QFont()
         title_font.setPointSize(11)  # Slightly smaller
         title_font.setWeight(QFont.Weight.DemiBold)
         title_label.setFont(title_font)
         title_label.setStyleSheet(f"color: {theme_manager.get_color('text_primary')};")
-        
+
         # Details layout with all info in one line
         details_layout = QHBoxLayout()
         details_layout.setSpacing(6)
-        
-        # Number badge - more compact
-        self.number_badge = QLabel(f"#{self.controller_number}")
+
+        # Number badge - shows controller slot number
+        self.number_badge = QLabel(f"Slot #{self.controller_number}")
         self.number_badge.setStyleSheet(f"""
             QLabel {{
                 background-color: {theme_manager.get_color('gaming_purple')};
@@ -1088,7 +1088,7 @@ class EnhancedVirtualControllerCard(QFrame):
                 padding: 1px 6px;
                 font-size: 9px;
                 font-weight: bold;
-                min-width: 16px;
+                min-width: 24px;
             }}
         """)
         
@@ -1145,14 +1145,14 @@ class EnhancedVirtualControllerCard(QFrame):
             }}
         """)
         self.setFixedHeight(58)  # More compact height
-        
-        # Update icon color
+
+        # Update icon color (virtual controller icon)
         self.controller_icon.setStyleSheet(f"""
             QLabel {{
-                font-size: 16px;
+                font-size: 14px;
                 color: {theme_manager.get_color('gaming_purple')};
-                min-width: 18px;
-                max-width: 18px;
+                min-width: 24px;
+                max-width: 24px;
             }}
         """)
     
@@ -1172,11 +1172,11 @@ class EnhancedVirtualControllerCard(QFrame):
             self.status_icon.setStyleSheet(f"color: {theme_manager.get_color('success')}; font-size: 10px;")
             self.status_label.setText("Connected & Active")
             self.status_label.setStyleSheet(f"color: {theme_manager.get_color('success')}; font-size: 11px; font-weight: 600;")
-            
-            # Update icon to show active state
+
+            # Update icon to show active state (keep virtual controller icon)
             self.controller_icon.setStyleSheet(f"""
                 QLabel {{
-                    font-size: 18px;
+                    font-size: 14px;
                     color: {theme_manager.get_color('success')};
                     min-width: 24px;
                     max-width: 24px;
@@ -1192,11 +1192,11 @@ class EnhancedVirtualControllerCard(QFrame):
             self.status_icon.setStyleSheet(f"color: {theme_manager.get_color('text_secondary')}; font-size: 10px;")
             self.status_label.setText("Waiting for connection...")
             self.status_label.setStyleSheet(f"color: {theme_manager.get_color('text_secondary')}; font-size: 11px;")
-            
-            # Reset icon color
+
+            # Reset icon color (keep virtual controller icon)
             self.controller_icon.setStyleSheet(f"""
                 QLabel {{
-                    font-size: 18px;
+                    font-size: 14px;
                     color: {theme_manager.get_color('gaming_purple')};
                     min-width: 24px;
                     max-width: 24px;

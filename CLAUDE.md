@@ -29,8 +29,20 @@ pytest -m e2e         # End-to-end tests
 # Run single test file
 pytest tests/unit/test_controller_manager.py -v
 
+# Run specific test class or method
+pytest tests/unit/test_controller_manager.py::TestControllerManager::test_initialization -v
+
 # Run with asyncio debugging
 pytest tests/ -v --log-level=DEBUG
+
+# Run tests quietly (less output)
+pytest tests/unit/ -q
+
+# Run tests with short traceback
+pytest tests/unit/ --tb=short
+
+# Stop on first failure
+pytest tests/unit/ -x
 ```
 
 ### Code Quality
@@ -214,7 +226,7 @@ make clean
 ### Error Handling & Logging
 - Centralized logging via `setup_application_logging()`
 - Callback-based logging integration for GUI apps
-- Graceful error handling with try/catch blocks
+- **NO try-catch blocks** - Use return value checking and early returns instead
 - Connection state tracking with status callbacks
 
 ### Data Validation
